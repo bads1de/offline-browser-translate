@@ -17,34 +17,39 @@
                 <img class="sidebar-logo" src="../icons/icon48.png" alt="">
                 <div>
                     <div class="sidebar-title">LLM Translator</div>
-                    <div class="sidebar-subtitle">Settings</div>
+                    <div class="sidebar-subtitle" data-i18n="sidebar.subtitle">Settings</div>
                 </div>
             </div>
             <ul class="nav-list">
                 <li><a href="#section-provider" class="nav-link active" data-section="section-provider">
-                        <span class="nav-icon">🔌</span> Provider
+                        <span class="nav-icon">🔌</span> <span data-i18n="nav.provider">Provider</span>
                     </a></li>
                 <li><a href="#section-translation" class="nav-link" data-section="section-translation">
-                        <span class="nav-icon">🌍</span> Translation
+                        <span class="nav-icon">🌍</span> <span data-i18n="nav.translation">Translation</span>
                     </a></li>
                 <li><a href="#section-autotranslate" class="nav-link" data-section="section-autotranslate">
-                        <span class="nav-icon">🚀</span> Auto-Translate
+                        <span class="nav-icon">🚀</span> <span data-i18n="nav.autotranslate">Auto-Translate</span>
                     </a></li>
                 <li><a href="#section-performance" class="nav-link" data-section="section-performance">
-                        <span class="nav-icon">⚡</span> Performance
+                        <span class="nav-icon">⚡</span> <span data-i18n="nav.performance">Performance</span>
                     </a></li>
                 <li><a href="#section-output" class="nav-link" data-section="section-output">
-                        <span class="nav-icon">📤</span> Output
+                        <span class="nav-icon">📤</span> <span data-i18n="nav.output">Output</span>
                     </a></li>
                 <li><a href="#section-cache" class="nav-link" data-section="section-cache">
-                        <span class="nav-icon">💾</span> Cache
+                        <span class="nav-icon">💾</span> <span data-i18n="nav.cache">Cache</span>
                     </a></li>
                 <li><a href="#section-experimental" class="nav-link" data-section="section-experimental">
-                        <span class="nav-icon">🧪</span> Experimental
+                        <span class="nav-icon">🧪</span> <span data-i18n="nav.experimental">Experimental</span>
                     </a></li>
             </ul>
             <div class="sidebar-footer">
-                <p class="privacy-note">🔒 Your data never leaves your machine</p>
+                <!-- UI language toggle: each option is labelled in its own language -->
+                <div class="ui-lang-toggle" role="group" aria-label="UI language / 言語">
+                    <button type="button" id="uiLangEn" class="ui-lang-btn">English</button>
+                    <button type="button" id="uiLangJa" class="ui-lang-btn">日本語</button>
+                </div>
+                <p class="privacy-note" data-i18n="sidebar.privacy">🔒 Your data never leaves your machine</p>
             </div>
         </nav>
 
@@ -55,13 +60,13 @@
                 <!-- Provider Settings -->
                 <section class="settings-section" id="section-provider">
                     <div class="section-header">
-                        <h2>🔌 Provider Configuration</h2>
-                        <p class="section-description">Select and configure your local LLM backend.</p>
+                        <h2 data-i18n="provider.sectionTitle">🔌 Provider Configuration</h2>
+                        <p class="section-description" data-i18n="provider.sectionDesc">Select and configure your local LLM backend.</p>
                     </div>
 
                     <div class="form-grid">
                         <div class="form-group span-full">
-                            <label for="providerTrigger">Provider</label>
+                            <label for="providerTrigger" data-i18n="provider.label">Provider</label>
                             <div class="lang-picker simple-select" id="providerPickerEl">
                                 <button type="button" id="providerTrigger" class="lang-picker-trigger"
                                     aria-haspopup="listbox" aria-expanded="false">
@@ -76,7 +81,7 @@
                                     <ul id="providerList" class="lang-picker-list" role="listbox" tabindex="-1"></ul>
                                 </div>
                             </div>
-                            <p class="hint">Auto-detect will try both providers and use whichever responds first.</p>
+                            <p class="hint" data-i18n="provider.hint">Auto-detect will try both providers and use whichever responds first.</p>
                         </div>
 
                         <div class="form-group">
@@ -85,13 +90,13 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="lmstudioUrl">LM Studio / OpenAI-compatible URL</label>
+                            <label for="lmstudioUrl" data-i18n="lmstudioUrl.label">LM Studio / OpenAI-compatible URL</label>
                             <input type="text" id="lmstudioUrl" placeholder="http://localhost:1234">
-                            <p class="hint">Also works with llama.cpp, vLLM, and other OpenAI-compatible servers.</p>
+                            <p class="hint" data-i18n="lmstudioUrl.hint">Also works with llama.cpp, vLLM, and other OpenAI-compatible servers.</p>
                         </div>
 
                         <div class="form-group span-full">
-                            <label for="modelTrigger">Preferred Model</label>
+                            <label for="modelTrigger" data-i18n="model.label">Preferred Model</label>
                             <div class="select-with-btn">
                                 <div class="lang-picker" id="modelPickerEl">
                                     <button type="button" id="modelTrigger"
@@ -107,14 +112,16 @@
                                     <div id="modelMenu" class="lang-picker-menu" hidden>
                                         <div class="lang-picker-search-wrap">
                                             <input type="text" id="modelSearch" class="lang-picker-search"
-                                                placeholder="Search models…" autocomplete="off" spellcheck="false">
+                                                placeholder="Search models…" data-i18n-placeholder="model.searchPlaceholder"
+                                                autocomplete="off" spellcheck="false">
                                         </div>
                                         <ul id="modelList" class="lang-picker-list" role="listbox" tabindex="-1"></ul>
                                     </div>
                                 </div>
-                                <button id="refreshModels" class="icon-btn" title="Refresh models">🔄</button>
+                                <button id="refreshModels" class="icon-btn" title="Refresh models"
+                                    data-i18n-title="model.refresh">🔄</button>
                             </div>
-                            <p class="hint">Select the model to use for translations. Click the pin icon on a row to
+                            <p class="hint" data-i18n="model.hint">Select the model to use for translations. Click the pin icon on a row to
                                 keep it near the top.</p>
                         </div>
                     </div>
@@ -123,13 +130,13 @@
                 <!-- Translation Settings -->
                 <section class="settings-section" id="section-translation">
                     <div class="section-header">
-                        <h2>🌍 Translation Settings</h2>
-                        <p class="section-description">Configure language and prompt behaviour.</p>
+                        <h2 data-i18n="translation.sectionTitle">🌍 Translation Settings</h2>
+                        <p class="section-description" data-i18n="translation.sectionDesc">Configure language and prompt behaviour.</p>
                     </div>
 
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="targetLangTrigger">Target Language</label>
+                            <label for="targetLangTrigger" data-i18n="targetLang.label">Target Language</label>
                             <div class="lang-picker" id="targetLangPickerEl">
                                 <button type="button" id="targetLangTrigger" class="lang-picker-trigger"
                                     aria-haspopup="listbox" aria-expanded="false">
@@ -143,7 +150,8 @@
                                 <div id="targetLangMenu" class="lang-picker-menu" hidden>
                                     <div class="lang-picker-search-wrap">
                                         <input type="text" id="targetLangSearch" class="lang-picker-search"
-                                            placeholder="Search languages…" autocomplete="off" spellcheck="false">
+                                            placeholder="Search languages…" data-i18n-placeholder="lang.searchPlaceholder"
+                                            autocomplete="off" spellcheck="false">
                                     </div>
                                     <ul id="targetLangList" class="lang-picker-list" role="listbox" tabindex="-1"></ul>
                                 </div>
@@ -151,7 +159,8 @@
                         </div>
 
                         <div class="form-group" id="sourceLanguageGroup" hidden>
-                            <label for="sourceLanguageTrigger">Source Language <span class="hint-inline">(TranslateGemma
+                            <label for="sourceLanguageTrigger"><span data-i18n="sourceLang.label">Source Language</span>
+                                <span class="hint-inline" data-i18n="sourceLang.only">(TranslateGemma
                                     only)</span></label>
                             <div class="lang-picker simple-select" id="sourceLanguagePickerEl">
                                 <button type="button" id="sourceLanguageTrigger" class="lang-picker-trigger"
@@ -169,12 +178,12 @@
                                     </ul>
                                 </div>
                             </div>
-                            <p class="hint">TranslateGemma requires an explicit source language. Auto-detect reads the
+                            <p class="hint" data-i18n="sourceLang.hint">TranslateGemma requires an explicit source language. Auto-detect reads the
                                 page's lang attribute.</p>
                         </div>
 
                         <div class="form-group">
-                            <label for="requestFormatTrigger">Request Format</label>
+                            <label for="requestFormatTrigger" data-i18n="requestFormat.label">Request Format</label>
                             <div class="lang-picker simple-select" id="requestFormatPickerEl">
                                 <button type="button" id="requestFormatTrigger" class="lang-picker-trigger"
                                     aria-haspopup="listbox" aria-expanded="false">
@@ -196,22 +205,26 @@
 
                         <!-- Prompt Editor -->
                         <div class="form-group span-full prompt-editor" id="promptEditor">
-                            <label>Prompt Template <span class="hint-inline">(editable)</span></label>
+                            <label><span data-i18n="prompt.label">Prompt Template</span> <span
+                                    class="hint-inline" data-i18n="prompt.editable">(editable)</span></label>
                             <p class="hint" id="promptEditorHint"></p>
                             <div class="variables-hint">
-                                Variables: <code>{{targetLanguage}}</code> <code>{{targetCode}}</code>
+                                <span data-i18n="prompt.variablesLabel">Variables:</span>
+                                <code>{{targetLanguage}}</code> <code>{{targetCode}}</code>
                                 <code>{{sourceLang}}</code> <code>{{sourceCode}}</code> <code>{{texts}}</code>
                             </div>
-                            <label for="systemPrompt" class="sub-label">System Prompt:</label>
+                            <label for="systemPrompt" class="sub-label" data-i18n="prompt.systemLabel">System Prompt:</label>
                             <div class="editor-container">
                                 <div class="editor-backdrop" id="systemPromptBackdrop"></div>
-                                <textarea id="systemPrompt" rows="4" placeholder="System prompt..."></textarea>
+                                <textarea id="systemPrompt" rows="4" placeholder="System prompt..."
+                                    data-i18n-placeholder="prompt.systemPlaceholder"></textarea>
                             </div>
 
-                            <label for="userPrompt" class="sub-label">User Prompt:</label>
+                            <label for="userPrompt" class="sub-label" data-i18n="prompt.userLabel">User Prompt:</label>
                             <div class="editor-container">
                                 <div class="editor-backdrop" id="userPromptBackdrop"></div>
-                                <textarea id="userPrompt" rows="4" placeholder="User prompt template..."></textarea>
+                                <textarea id="userPrompt" rows="4" placeholder="User prompt template..."
+                                    data-i18n-placeholder="prompt.userPlaceholder"></textarea>
                             </div>
                         </div>
                     </div>
@@ -220,8 +233,8 @@
                 <!-- Auto-translate -->
                 <section class="settings-section" id="section-autotranslate">
                     <div class="section-header">
-                        <h2>🚀 Auto-Translate</h2>
-                        <p class="section-description">
+                        <h2 data-i18n="autoTranslate.sectionTitle">🚀 Auto-Translate</h2>
+                        <p class="section-description" data-i18n="autoTranslate.sectionDesc">
                             Trigger translation automatically on page load, or on demand for selected text.
                         </p>
                     </div>
@@ -230,8 +243,8 @@
                         <div class="toggle-card">
                             <div class="toggle-card-header">
                                 <div>
-                                    <div class="toggle-card-title">Automatically translate pages</div>
-                                    <div class="toggle-card-desc">
+                                    <div class="toggle-card-title" data-i18n="autoTranslate.pagesTitle">Automatically translate pages</div>
+                                    <div class="toggle-card-desc" data-i18n="autoTranslate.pagesDesc">
                                         Translates pages automatically on load, using your own machine. Asks for
                                         permission to run on all websites.
                                     </div>
@@ -246,8 +259,8 @@
                         <div class="toggle-card">
                             <div class="toggle-card-header">
                                 <div>
-                                    <div class="toggle-card-title">Floating translate button</div>
-                                    <div class="toggle-card-desc">A small button appears next to selected text so you
+                                    <div class="toggle-card-title" data-i18n="autoTranslate.floatingTitle">Floating translate button</div>
+                                    <div class="toggle-card-desc" data-i18n="autoTranslate.floatingDesc">A small button appears next to selected text so you
                                         can translate it without right-clicking. Enabling this will ask for permission
                                         to run on all websites.</div>
                                 </div>
@@ -262,7 +275,7 @@
                     <div id="autoTranslateOptions" hidden>
                         <div class="form-grid">
                             <div class="form-group">
-                                <label for="neverLanguageTrigger">Never auto-translate these languages</label>
+                                <label for="neverLanguageTrigger" data-i18n="autoTranslate.neverLangLabel">Never auto-translate these languages</label>
                                 <div class="select-with-btn">
                                     <div class="lang-picker simple-select" id="neverLanguagePickerEl">
                                         <button type="button" id="neverLanguageTrigger" class="lang-picker-trigger"
@@ -280,21 +293,25 @@
                                                 tabindex="-1"></ul>
                                         </div>
                                     </div>
-                                    <button id="addNeverLanguage" class="icon-btn" title="Add language">＋</button>
+                                    <button id="addNeverLanguage" class="icon-btn" title="Add language"
+                                        data-i18n-title="autoTranslate.addLanguage">＋</button>
                                 </div>
                                 <div class="chip-list" id="neverLanguageList"></div>
-                                <p class="hint">Languages you already read. Your target language is always excluded.</p>
+                                <p class="hint" data-i18n="autoTranslate.neverLangHint">Languages you already read. Your target language is always excluded.</p>
                             </div>
 
                             <div class="form-group">
-                                <label for="neverSiteInput">Never auto-translate these sites</label>
+                                <label for="neverSiteInput" data-i18n="autoTranslate.neverSiteLabel">Never auto-translate these sites</label>
                                 <div class="select-with-btn">
                                     <input type="text" id="neverSiteInput" placeholder="example.com">
-                                    <button id="addNeverSite" class="icon-btn" title="Add site">＋</button>
+                                    <button id="addNeverSite" class="icon-btn" title="Add site"
+                                        data-i18n-title="autoTranslate.addSite">＋</button>
                                 </div>
                                 <div class="chip-list" id="neverSiteList"></div>
-                                <p class="hint">Subdomains are covered too: <code>example.com</code> also blocks
-                                    <code>news.example.com</code>. The on-page banner can also add sites here.
+                                <p class="hint">
+                                    <span data-i18n="autoTranslate.neverSitePart1">Subdomains are covered too: </span><code>example.com</code><span
+                                        data-i18n="autoTranslate.neverSitePart2"> also blocks </span><code>news.example.com</code><span
+                                        data-i18n="autoTranslate.neverSitePart3">. The on-page banner can also add sites here.</span>
                                 </p>
                             </div>
                         </div>
@@ -304,33 +321,35 @@
                 <!-- Performance Settings -->
                 <section class="settings-section" id="section-performance">
                     <div class="section-header">
-                        <h2>⚡ Performance</h2>
-                        <p class="section-description">Tune batch size and concurrency for your hardware.</p>
+                        <h2 data-i18n="performance.sectionTitle">⚡ Performance</h2>
+                        <p class="section-description" data-i18n="performance.sectionDesc">Tune batch size and concurrency for your hardware.</p>
                     </div>
 
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="maxTokens">Max Tokens per Batch</label>
+                            <label for="maxTokens" data-i18n="performance.maxTokens">Max Tokens per Batch</label>
                             <input type="number" id="maxTokens" min="100" max="8000" step="100">
-                            <p class="hint">Higher values = fewer API calls, but may hit model limits.</p>
+                            <p class="hint" data-i18n="performance.maxTokensHint">Higher values = fewer API calls, but may hit model limits.</p>
                         </div>
 
                         <div class="form-group">
-                            <label for="maxItems">Max Items per Batch</label>
+                            <label for="maxItems" data-i18n="performance.maxItems">Max Items per Batch</label>
                             <input type="number" id="maxItems" min="1" max="50" step="1">
-                            <p class="hint">Lower values = faster visual feedback as translations appear.</p>
+                            <p class="hint" data-i18n="performance.maxItemsHint">Lower values = faster visual feedback as translations appear.</p>
                         </div>
 
                         <div class="form-group">
-                            <label for="temperature">Temperature: <span id="temperatureValue">0.3</span></label>
+                            <label for="temperature"><span data-i18n="performance.temperature">Temperature:</span> <span
+                                    id="temperatureValue">0.3</span></label>
                             <input type="range" id="temperature" min="0" max="1" step="0.1">
-                            <p class="hint">Lower = more consistent translations. Higher = more creative.</p>
+                            <p class="hint" data-i18n="performance.temperatureHint">Lower = more consistent translations. Higher = more creative.</p>
                         </div>
 
                         <div class="form-group">
-                            <label for="maxConcurrent">Parallel Requests: <span id="maxConcurrentValue">4</span></label>
+                            <label for="maxConcurrent"><span data-i18n="performance.maxConcurrent">Parallel Requests:</span>
+                                <span id="maxConcurrentValue">4</span></label>
                             <input type="range" id="maxConcurrent" min="1" max="32" step="1" value="4">
-                            <p class="hint">How many translation requests run at once. Higher isn't always faster; it
+                            <p class="hint" data-i18n="performance.maxConcurrentHint">How many translation requests run at once. Higher isn't always faster; it
                                 depends on your hardware and server.</p>
                         </div>
                     </div>
@@ -339,8 +358,8 @@
                 <!-- Output Settings -->
                 <section class="settings-section" id="section-output">
                     <div class="section-header">
-                        <h2>📤 Output Settings</h2>
-                        <p class="section-description">Control how translations are displayed and how models respond.
+                        <h2 data-i18n="output.sectionTitle">📤 Output Settings</h2>
+                        <p class="section-description" data-i18n="output.sectionDesc">Control how translations are displayed and how models respond.
                         </p>
                     </div>
 
@@ -348,8 +367,8 @@
                         <div class="toggle-card">
                             <div class="toggle-card-header">
                                 <div>
-                                    <div class="toggle-card-title">Structured JSON output</div>
-                                    <div class="toggle-card-desc">Requests JSON format from the model. Disable if the
+                                    <div class="toggle-card-title" data-i18n="output.structuredTitle">Structured JSON output</div>
+                                    <div class="toggle-card-desc" data-i18n="output.structuredDesc">Requests JSON format from the model. Disable if the
                                         model struggles with JSON.</div>
                                 </div>
                                 <label class="switch">
@@ -362,8 +381,8 @@
                         <div class="toggle-card">
                             <div class="toggle-card-header">
                                 <div>
-                                    <div class="toggle-card-title">Plain-text fallback</div>
-                                    <div class="toggle-card-desc">If a segment keeps coming back malformed, retranslate
+                                    <div class="toggle-card-title" data-i18n="output.fallbackTitle">Plain-text fallback</div>
+                                    <div class="toggle-card-desc" data-i18n="output.fallbackDesc">If a segment keeps coming back malformed, retranslate
                                         it as plain text. Slower, but avoids leaving text untranslated.</div>
                                 </div>
                                 <label class="switch">
@@ -376,8 +395,8 @@
                         <div class="toggle-card">
                             <div class="toggle-card-header">
                                 <div>
-                                    <div class="toggle-card-title">Translation glow effect</div>
-                                    <div class="toggle-card-desc">Visual indicator when text has been translated on the
+                                    <div class="toggle-card-title" data-i18n="output.glowTitle">Translation glow effect</div>
+                                    <div class="toggle-card-desc" data-i18n="output.glowDesc">Visual indicator when text has been translated on the
                                         page.</div>
                                 </div>
                                 <label class="switch">
@@ -392,14 +411,14 @@
                 <!-- Translation Cache -->
                 <section class="settings-section" id="section-cache">
                     <div class="section-header">
-                        <h2>💾 Translation Cache</h2>
-                        <p class="section-description">Reuse stored translations for identical text so repeated content
+                        <h2 data-i18n="cache.sectionTitle">💾 Translation Cache</h2>
+                        <p class="section-description" data-i18n="cache.sectionDesc">Reuse stored translations for identical text so repeated content
                             isn't re-translated.</p>
                     </div>
 
                     <div class="form-grid">
                         <div class="form-group">
-                            <label for="cacheModeTrigger">Cache translations</label>
+                            <label for="cacheModeTrigger" data-i18n="cache.modeLabel">Cache translations</label>
                             <div class="lang-picker simple-select" id="cacheModePickerEl">
                                 <button type="button" id="cacheModeTrigger" class="lang-picker-trigger"
                                     aria-haspopup="listbox" aria-expanded="false">
@@ -414,14 +433,16 @@
                                     <ul id="cacheModeList" class="lang-picker-list" role="listbox" tabindex="-1"></ul>
                                 </div>
                             </div>
-                            <p class="hint" id="cacheBackendWarning" hidden style="color: var(--yellow, #dbbc7f);">⚠️
+                            <p class="hint" id="cacheBackendWarning" hidden style="color: var(--yellow, #dbbc7f);"
+                                data-i18n="cache.backendWarning">⚠️
                                 This browser doesn't support keeping the cache across sessions.</p>
                         </div>
 
                         <div class="form-group cache-actions">
-                            <label>Cache management</label>
-                            <button id="clearCache" class="secondary-btn">🗑️ Clear cache (<span
-                                    id="cacheCount">…</span> entries)</button>
+                            <label data-i18n="cache.managementLabel">Cache management</label>
+                            <button id="clearCache" class="secondary-btn"><span data-i18n="cache.clearPrefix">🗑️ Clear
+                                    cache (</span><span id="cacheCount">…</span><span
+                                    data-i18n="cache.clearSuffix"> entries)</span></button>
                         </div>
                     </div>
                 </section>
@@ -429,16 +450,17 @@
                 <!-- Experimental Features -->
                 <section class="settings-section" id="section-experimental">
                     <div class="section-header">
-                        <h2>🧪 Experimental</h2>
-                        <p class="section-description">These are experimental features and might not fully work.</p>
+                        <h2 data-i18n="experimental.sectionTitle">🧪 Experimental</h2>
+                        <p class="section-description" data-i18n="experimental.sectionDesc">These are experimental features and might not fully work.</p>
                     </div>
 
                     <!-- Glossary: folded in here rather than given its own sidebar item since
                      it's an experimental feature; collapses to just the toggle when off. -->
                     <div class="subsection">
                         <div class="subsection-header">
-                            <h3>📖 Glossary <span class="hint-inline">(experimental)</span></h3>
-                            <p class="section-description">
+                            <h3><span data-i18n="glossary.title">📖 Glossary</span> <span class="hint-inline"
+                                    data-i18n="glossary.experimental">(experimental)</span></h3>
+                            <p class="section-description" data-i18n="glossary.desc">
                                 Force consistent translations for specific terms. Whole-segment matches skip the model
                                 entirely; partial matches are added as hints. Only matching terms are sent per request,
                                 so a large dictionary is fine.
@@ -450,27 +472,29 @@
                                 <input type="checkbox" id="useGlossary">
                                 <span class="slider"></span>
                             </label>
-                            <span class="toggle-label">Enable glossary</span>
+                            <span class="toggle-label" data-i18n="glossary.enable">Enable glossary</span>
                             <span id="glossaryStatusBadge" class="glossary-badge"></span>
                         </div>
 
                         <div id="glossarySettings" hidden>
                             <div class="glossary-actions">
                                 <label class="secondary-btn btn-sm" for="glossaryImportFile"
-                                    title="Import from TSV file">
-                                    ⬆️ Import TSV
+                                    title="Import from TSV file" data-i18n-title="glossary.importTitle">
+                                    <span data-i18n="glossary.import">⬆️ Import TSV</span>
                                 </label>
                                 <input type="file" id="glossaryImportFile" accept=".tsv,.txt,text/plain"
                                     style="display:none">
-                                <button id="glossaryExportBtn" class="secondary-btn btn-sm"
-                                    title="Export as TSV file">⬇️ Export TSV</button>
-                                <button id="clearGlossary" class="danger-btn btn-sm">🗑️ Clear all</button>
+                                <button id="glossaryExportBtn" class="secondary-btn btn-sm" title="Export as TSV file"
+                                    data-i18n-title="glossary.exportTitle" data-i18n="glossary.export">⬇️ Export TSV</button>
+                                <button id="clearGlossary" class="danger-btn btn-sm" data-i18n="glossary.clearAll">🗑️ Clear all</button>
                             </div>
 
                             <div class="form-grid" style="margin: 14px 0;">
                                 <div class="form-group">
-                                    <label for="glossaryTargetLangTrigger">Target language <span
-                                            class="hint-inline">(glossary only applies when translating to this
+                                    <label for="glossaryTargetLangTrigger"><span
+                                            data-i18n="glossary.targetLangLabel">Target language</span> <span
+                                            class="hint-inline"
+                                            data-i18n="glossary.targetLangHint">(glossary only applies when translating to this
                                             language)</span></label>
                                     <div class="lang-picker simple-select" id="glossaryTargetLangPickerEl">
                                         <button type="button" id="glossaryTargetLangTrigger" class="lang-picker-trigger"
@@ -498,11 +522,14 @@
                             <div class="glossary-editor" id="glossaryEditor">
                                 <div class="glossary-filter-bar">
                                     <input type="search" id="glossaryFilter" class="glossary-input"
-                                        placeholder="🔍 Filter terms…" autocomplete="off">
+                                        placeholder="🔍 Filter terms…" data-i18n-placeholder="glossary.filterPlaceholder"
+                                        autocomplete="off">
                                 </div>
                                 <div class="glossary-table-header">
-                                    <span>Source term</span>
-                                    <span>Translation <span class="hint-inline">(leave empty to keep
+                                    <span data-i18n="glossary.colSource">Source term</span>
+                                    <span><span data-i18n="glossary.colTranslation">Translation</span> <span
+                                            class="hint-inline"
+                                            data-i18n="glossary.colTranslationHint">(leave empty to keep
                                             as-is)</span></span>
                                     <span></span>
                                 </div>
@@ -511,26 +538,30 @@
                                 </div>
                                 <div class="glossary-add-row">
                                     <input type="text" id="newTermSource" placeholder="Add new term…"
-                                        class="glossary-input">
+                                        data-i18n-placeholder="glossary.newTermPlaceholder" class="glossary-input">
                                     <input type="text" id="newTermTarget" placeholder="Translation…"
+                                        data-i18n-placeholder="glossary.newTranslationPlaceholder"
                                         class="glossary-input">
-                                    <button id="addGlossaryTerm" class="icon-btn" title="Add term">＋</button>
+                                    <button id="addGlossaryTerm" class="icon-btn" title="Add term"
+                                        data-i18n-title="glossary.addTerm">＋</button>
                                 </div>
                             </div>
 
                             <p class="hint glossary-rows-note" id="glossaryRowsNote"></p>
 
                             <div class="glossary-save-bar">
-                                <span class="glossary-unsaved-hint" id="glossaryUnsavedHint" hidden>● Unsaved
+                                <span class="glossary-unsaved-hint" id="glossaryUnsavedHint" hidden
+                                    data-i18n="glossary.unsavedHint">● Unsaved
                                     changes</span>
-                                <button id="saveGlossary" class="primary-btn btn-sm">💾 Save glossary</button>
+                                <button id="saveGlossary" class="primary-btn btn-sm" data-i18n="glossary.save">💾 Save glossary</button>
                             </div>
 
                             <p class="hint" style="margin-top: 0.75rem;">
-                                <strong>Import/export uses TSV</strong> (Tab-Separated Values): one line per term, with
-                                the term and its translation separated by a Tab, e.g. <code>Server&#9;Servidor</code>.
-                                Any spreadsheet app can save to this format. Add a <code>#target: ja</code> line to
-                                limit the file to one target language.
+                                <strong data-i18n="glossary.tsvStrong">Import/export uses TSV</strong><span
+                                    data-i18n="glossary.tsvPart1"> (Tab-Separated Values): one line per term, with
+                                    the term and its translation separated by a Tab, e.g. </span><code>Server&#9;Servidor</code><span
+                                    data-i18n="glossary.tsvPart2">. Any spreadsheet app can save to this format. Add a </span><code>#target: ja</code><span
+                                    data-i18n="glossary.tsvPart3"> line to limit the file to one target language.</span>
                             </p>
                         </div>
                     </div>
@@ -538,8 +569,8 @@
                     <!-- Debug logging: kept down here at the bottom, out of the way. -->
                     <div class="subsection">
                         <div class="subsection-header">
-                            <h3>🐞 Debug logging</h3>
-                            <p class="section-description">Verbose logs for troubleshooting. View in about:debugging →
+                            <h3 data-i18n="debug.title">🐞 Debug logging</h3>
+                            <p class="section-description" data-i18n="debug.desc">Verbose logs for troubleshooting. View in about:debugging →
                                 Inspect → Console.</p>
                         </div>
                         <div class="toggle-row">
@@ -547,14 +578,14 @@
                                 <input type="checkbox" id="debugLogging">
                                 <span class="slider"></span>
                             </label>
-                            <span class="toggle-label">Enable debug logging</span>
+                            <span class="toggle-label" data-i18n="debug.enable">Enable debug logging</span>
                         </div>
                     </div>
 
                     <!-- LM Studio TranslateGemma Help -->
                     <div class="info-box" id="translateGemmaHelp" hidden>
-                        <h3>ℹ️ TranslateGemma + LM Studio</h3>
-                        <p>LM Studio may need a custom chat template for TranslateGemma to work correctly. Go to your
+                        <h3 data-i18n="tgHelp.title">ℹ️ TranslateGemma + LM Studio</h3>
+                        <p data-i18n="tgHelp.desc">LM Studio may need a custom chat template for TranslateGemma to work correctly. Go to your
                             model's
                             settings in LM Studio and set the chat template to:</p>
                         <pre id="lmstudioTemplate">{{ bos_token }}
@@ -568,7 +599,7 @@
 {%- if add_generation_prompt -%}
     {{ '&lt;start_of_turn&gt;model\n' }}
 {%- endif -%}</pre>
-                        <button id="copyTemplate" class="secondary-btn btn-sm">📋 Copy Template</button>
+                        <button id="copyTemplate" class="secondary-btn btn-sm" data-i18n="tgHelp.copy">📋 Copy Template</button>
                     </div>
                 </section>
 
@@ -576,11 +607,11 @@
 
             <!-- Footer actions -->
             <div class="content-footer">
-                <button id="saveSettings" class="primary-btn">💾 Save Settings</button>
-                <button id="resetSettings" class="danger-btn">🔄 Reset to Defaults</button>
+                <button id="saveSettings" class="primary-btn" data-i18n="footer.save">💾 Save Settings</button>
+                <button id="resetSettings" class="danger-btn" data-i18n="footer.reset">🔄 Reset to Defaults</button>
                 <span class="footer-spacer"></span>
                 <a class="footer-issue-link" href="https://github.com/Eldoprano/offline-browser-translate/issues/"
-                    target="_blank" rel="noopener noreferrer">🐛 Found a bug? Report it on GitHub</a>
+                    target="_blank" rel="noopener noreferrer" data-i18n="footer.issueLink">🐛 Found a bug? Report it on GitHub</a>
             </div>
 
         </main>
@@ -588,10 +619,12 @@
 
     <div id="toast" class="toast">
         <span class="toast-icon">✅</span>
-        <span class="toast-message">Settings saved!</span>
+        <span class="toast-message" data-i18n="toast.saved">Settings saved!</span>
     </div>
 
     <script src="../languages.js"></script>
+    <script src="../i18n.js"></script>
+    <script src="i18n.js"></script>
     <script src="options.js"></script>
 </body>
 

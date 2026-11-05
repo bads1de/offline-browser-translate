@@ -166,6 +166,38 @@ body {
     border-top: 1px solid var(--border);
 }
 
+/* EN / 日本語 UI language switch (options page only) */
+.ui-lang-toggle {
+    display: flex;
+    gap: 4px;
+    padding: 3px;
+    margin-bottom: 10px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+}
+
+.ui-lang-btn {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.ui-lang-btn:hover {
+    color: var(--text-primary);
+}
+
+.ui-lang-btn.active {
+    color: var(--accent);
+    background: rgba(167, 192, 128, 0.12);
+}
+
 .privacy-note {
     font-size: 11px;
     color: var(--text-muted);

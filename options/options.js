@@ -29,20 +29,22 @@ const DEFAULT_SETTINGS = {
     showGlow: false,  // Disabled by default
     useGlossary: false,  // Off by default; enable once you've set up terms
     cacheMode: 'off',
+    // Options page UI language: 'auto' (from browser locale), or 'en' / 'ja'
+    uiLanguage: 'auto',
     autoTranslatePages: false,
     autoTranslateNeverLanguages: [],
     autoTranslateNeverSites: []
 };
 
-// Format descriptions
+// Format descriptions, keyed by format — values are i18n dictionary keys.
 const FORMAT_DESCRIPTIONS = {
-    auto: 'Picks the format automatically based on the selected model.',
-    default: 'Standard JSON output format. Best for most models.',
-    translategemma: 'Specialized format for TranslateGemma models.',
-    hunyuan: 'Format optimized for Hunyuan-MT models. No system message.',
-    plamo: 'PLaMo Translate models via llama.cpp / OpenAI-compatible server. Sends the source text as a single user message with target_lang.',
-    simple: 'Simple line-by-line output for smaller models.',
-    custom: 'Your custom prompts. Edit below.'
+    auto: 'formatDesc.auto',
+    default: 'formatDesc.default',
+    translategemma: 'formatDesc.translategemma',
+    hunyuan: 'formatDesc.hunyuan',
+    plamo: 'formatDesc.plamo',
+    simple: 'formatDesc.simple',
+    custom: 'formatDesc.custom'
 };
 
 // Prompt templates for each format
@@ -175,6 +177,8 @@ const elements = {
     copyTemplate: document.getElementById('copyTemplate'),
     saveSettings: document.getElementById('saveSettings'),
     resetSettings: document.getElementById('resetSettings'),
+    uiLangEn: document.getElementById('uiLangEn'),
+    uiLangJa: document.getElementById('uiLangJa'),
     toast: document.getElementById('toast')
 };
 
@@ -285,14 +289,17 @@ function createPicker(config) {
             }
 
             if (pinnedItems.length) {
-                list.appendChild(this.makeGroupLabel('Pinned'));
+                list.appendChild(this.makeGroupLabel(
+                    config.pinnedGroupLabel ? config.pinnedGroupLabel() : 'Pinned'));
                 pinnedItems.forEach(i => list.appendChild(this.makeOption(i, true)));
                 if (restItems.length) {
                     const sep = document.createElement('li');
                     sep.className = 'lang-separator';
                     sep.setAttribute('aria-hidden', 'true');
                     list.appendChild(sep);
-                    list.appendChild(this.makeGroupLabel(config.restGroupLabel));
+                    const restLabel = typeof config.restGroupLabel === 'function'
+                        ? config.restGroupLabel() : config.restGroupLabel;
+                    list.appendChild(this.makeGroupLabel(restLabel));
                 }
             }
             restItems.forEach(i => list.appendChild(this.makeOption(i, false)));
@@ -328,7 +335,7 @@ function createPicker(config) {
             pinBtn.type = 'button';
             pinBtn.className = 'lang-pin-btn';
             pinBtn.innerHTML = PIN_ICON_SVG;
-            pinBtn.title = pinned ? `Unpin ${name}` : `Pin ${name}`;
+            pinBtn.title = pinned ? t('picker.unpin', { name }) : t('picker.pin', { name });
             pinBtn.setAttribute('aria-label', pinBtn.title);
             pinBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -532,8 +539,9 @@ const langPicker = createPicker({
     getItems: () => Object.entries(LANGUAGES),
     getId: (entry) => entry[0],
     getName: (entry) => entry[1],
-    restGroupLabel: 'All languages',
-    emptyText: () => 'No languages match your search',
+    pinnedGroupLabel: () => t('picker.pinned'),
+    restGroupLabel: () => t('picker.allLanguages'),
+    emptyText: () => t('picker.noLangMatch'),
     labelFor: (code) => LANGUAGES[code] || code,
     isValidId: (code) => !!LANGUAGES[code],
     initialValue: 'en',
@@ -552,11 +560,12 @@ const modelPicker = createPicker({
     getItems: () => modelPicker.allModels,
     getId: (m) => m.id,
     getName: (m) => m.name,
-    restGroupLabel: 'All models',
-    emptyText: () => modelPicker.allModels.length === 0 ? 'No models available' : 'No models match your search',
+    pinnedGroupLabel: () => t('picker.pinned'),
+    restGroupLabel: () => t('picker.allModels'),
+    emptyText: () => modelPicker.allModels.length === 0 ? t('picker.noModels') : t('picker.noModelMatch'),
     labelFor: (id) => {
         const m = modelPicker.allModels.find(x => x.id === id);
-        return m ? m.name : (id || 'Select a model');
+        return m ? m.name : (id || t('model.select'));
     },
     decorateOption: (li, m) => {
         const badge = document.createElement('span');
@@ -604,12 +613,6 @@ function initModelPicker() {
 // the plain <select> they used to be.
 // ============================================================================
 
-const PROVIDER_OPTIONS = [
-    { value: 'auto', label: 'Auto-detect' },
-    { value: 'ollama', label: 'Ollama' },
-    { value: 'lmstudio', label: 'LM Studio / OpenAI-compatible' },
-];
-
 const providerPicker = createSimpleSelect({
     els: {
         picker: elements.providerPickerEl,
@@ -618,7 +621,11 @@ const providerPicker = createSimpleSelect({
         menu: elements.providerMenu,
         list: elements.providerList,
     },
-    getOptions: () => PROVIDER_OPTIONS,
+    getOptions: () => [
+        { value: 'auto', label: t('provider.auto') },
+        { value: 'ollama', label: t('provider.ollama') },
+        { value: 'lmstudio', label: t('provider.lmstudio') },
+    ],
     initialValue: 'auto',
 });
 
@@ -630,19 +637,15 @@ const sourceLanguagePicker = createSimpleSelect({
         menu: elements.sourceLanguageMenu,
         list: elements.sourceLanguageList,
     },
-    getOptions: () => [{ value: 'auto', label: 'Auto-detect from page' }, ...sortedLanguageOptions()],
+    getOptions: () => [{ value: 'auto', label: t('sourceLang.auto') }, ...sortedLanguageOptions()],
     initialValue: 'auto',
 });
 
-const REQUEST_FORMAT_OPTIONS = [
-    { value: 'auto', label: 'Auto (detect from model)' },
-    { value: 'default', label: 'Default (JSON output)' },
-    { value: 'translategemma', label: 'TranslateGemma' },
-    { value: 'hunyuan', label: 'Hunyuan-MT' },
-    { value: 'plamo', label: 'PLaMo Translate' },
-    { value: 'simple', label: 'Simple (Line-by-line)' },
-    { value: 'custom', label: 'Custom' },
-];
+// Localized display label for a request format id (also used by the
+// "Detected for this model" hint).
+function formatOptionLabel(format) {
+    return t('formatOpt.' + format);
+}
 
 const requestFormatPicker = createSimpleSelect({
     els: {
@@ -652,7 +655,8 @@ const requestFormatPicker = createSimpleSelect({
         menu: elements.requestFormatMenu,
         list: elements.requestFormatList,
     },
-    getOptions: () => REQUEST_FORMAT_OPTIONS,
+    getOptions: () => ['auto', 'default', 'translategemma', 'hunyuan', 'plamo', 'simple', 'custom']
+        .map(value => ({ value, label: formatOptionLabel(value) })),
     initialValue: 'auto',
 });
 
@@ -668,9 +672,9 @@ const cacheModePicker = createSimpleSelect({
         list: elements.cacheModeList,
     },
     getOptions: () => [
-        { value: 'off', label: "Don't cache" },
-        { value: 'session', label: 'Until I close the browser' },
-        { value: 'persistent', label: 'Keep across sessions', disabled: !cachePersistentAvailable },
+        { value: 'off', label: t('cache.mode.off') },
+        { value: 'session', label: t('cache.mode.session') },
+        { value: 'persistent', label: t('cache.mode.persistent'), disabled: !cachePersistentAvailable },
     ],
     initialValue: 'off',
 });
@@ -683,7 +687,7 @@ const glossaryTargetLangPicker = createSimpleSelect({
         menu: elements.glossaryTargetLangMenu,
         list: elements.glossaryTargetLangList,
     },
-    getOptions: () => [{ value: '', label: 'Any language (always apply)' }, ...sortedLanguageOptions()],
+    getOptions: () => [{ value: '', label: t('glossary.anyLang') }, ...sortedLanguageOptions()],
     initialValue: '',
 });
 
@@ -770,12 +774,80 @@ function initPromptEditors() {
     syncEditor('userPrompt', 'userPromptBackdrop');
 }
 
+// ============================================================================
+// UI language (English / Japanese)
+//
+// The options page is translated via options/i18n.js: static HTML carries
+// data-i18n attributes, and runtime-built strings go through t(). The choice
+// is persisted in settings.uiLanguage ('auto' resolves from the browser
+// locale); every JS-rendered surface is refreshed on switch.
+// ============================================================================
+
+function resolveUiLanguage() {
+    if (currentSettings.uiLanguage === 'ja' || currentSettings.uiLanguage === 'en') {
+        return currentSettings.uiLanguage;
+    }
+    return detectUiLanguage();
+}
+
+function updateUiLangToggle() {
+    if (elements.uiLangEn) elements.uiLangEn.classList.toggle('active', uiLanguage === 'en');
+    if (elements.uiLangJa) elements.uiLangJa.classList.toggle('active', uiLanguage === 'ja');
+}
+
+function initUiLanguage() {
+    setUiLanguage(resolveUiLanguage());
+    updateUiLangToggle();
+    if (elements.uiLangEn) {
+        elements.uiLangEn.addEventListener('click', () => switchUiLanguage('en'));
+    }
+    if (elements.uiLangJa) {
+        elements.uiLangJa.addEventListener('click', () => switchUiLanguage('ja'));
+    }
+}
+
+// Re-render everything options.js builds at runtime. Static HTML is covered by
+// applyI18nStatic(); these are the pieces whose text is computed in JS.
+function refreshI18nDynamic() {
+    // Simple-select trigger labels come from getOptions() at call time.
+    providerPicker.setValue(providerPicker.getValue());
+    sourceLanguagePicker.setValue(sourceLanguagePicker.getValue());
+    requestFormatPicker.setValue(requestFormatPicker.getValue());
+    cacheModePicker.setValue(cacheModePicker.getValue());
+    glossaryTargetLangPicker.setValue(glossaryTargetLangPicker.getValue());
+    neverLanguagePicker.setValue(neverLanguagePicker.getValue());
+    if (modelPicker.getValue()) modelPicker.setValue(modelPicker.getValue());
+
+    // Format description + prompt editor hint (updateFormatDescription skips
+    // the hint when the format didn't change, so set it here).
+    updateFormatDescription(requestFormatPicker.getValue());
+    if (elements.promptEditorHint && activePromptFormat && activePromptFormat !== 'auto') {
+        elements.promptEditorHint.textContent = t('prompt.editorHint', { format: activePromptFormat });
+    }
+
+    renderGlossaryRows();
+    updateGlossaryBadge(glossaryEditorRows.length);
+    renderAutoTranslateLists();
+}
+
+async function switchUiLanguage(lang) {
+    if (uiLanguage === lang) return;
+    setUiLanguage(lang);
+    currentSettings.uiLanguage = lang;
+    applyI18nStatic();
+    updateUiLangToggle();
+    refreshI18nDynamic();
+    await saveCurrentSettings();
+}
+
 // Initialize
 async function init() {
     initTargetLangPicker();
     initModelPicker();
     initSimpleSelects();
     await loadSettings();
+    initUiLanguage();
+    applyI18nStatic();
     applySettingsToUI();
     initPromptEditors(); // Initialize editors
     await loadModels();
@@ -827,7 +899,7 @@ async function loadModels() {
     if (!elements.modelTrigger) return;
 
     elements.modelTrigger.disabled = true;
-    elements.modelTriggerLabel.textContent = 'Loading models...';
+    elements.modelTriggerLabel.textContent = t('model.loading');
     try {
         const response = await browserAPI.runtime.sendMessage({ type: 'LIST_MODELS' });
         const models = response.models || [];
@@ -836,7 +908,7 @@ async function loadModels() {
         modelPicker.setPinned(currentSettings.pinnedModels || []);
 
         if (models.length === 0) {
-            elements.modelTriggerLabel.textContent = 'No models found';
+            elements.modelTriggerLabel.textContent = t('model.noneFound');
         } else {
             // Select current model if still available, else the first one
             const targetId = currentSettings.selectedModel && models.some(m => m.id === currentSettings.selectedModel)
@@ -851,7 +923,7 @@ async function loadModels() {
         }
     } catch (e) {
         console.error('Failed to load models:', e);
-        elements.modelTriggerLabel.textContent = 'Error loading models';
+        elements.modelTriggerLabel.textContent = t('model.loadError');
     } finally {
         elements.modelTrigger.disabled = false;
     }
@@ -902,6 +974,10 @@ function applySettingsToUI() {
     }
     renderAutoTranslateLists();
 
+    // Pickers constructed before the saved UI language was resolved painted
+    // their trigger labels with the detected locale — repaint them now.
+    neverLanguagePicker.setValue(neverLanguagePicker.getValue());
+
     // Update format description
     updateFormatDescription(currentSettings.requestFormat);
 
@@ -930,9 +1006,9 @@ let activePromptFormat = null;
 // it's selected. For any concrete format, shows (in priority order) an
 // in-progress draft, then a saved override, then the built-in template.
 function updateFormatDescription(format) {
-    let desc = FORMAT_DESCRIPTIONS[format] || '';
+    let desc = format && FORMAT_DESCRIPTIONS[format] ? t(FORMAT_DESCRIPTIONS[format]) : '';
     if (format === 'auto' && (modelPicker.getValue() || currentSettings.selectedModel)) {
-        desc += ` Detected for this model: ${getEffectiveFormat()}.`;
+        desc += t('formatDesc.detected', { format: formatOptionLabel(getEffectiveFormat()) });
     }
     elements.formatDescription.textContent = desc;
 
@@ -965,8 +1041,7 @@ function updateFormatDescription(format) {
         elements.userPrompt.dispatchEvent(new Event('input'));
     }
     if (elements.promptEditorHint) {
-        elements.promptEditorHint.textContent =
-            `Saved edits are used whenever "${format}" is active, including when Auto detects it.`;
+        elements.promptEditorHint.textContent = t('prompt.editorHint', { format });
     }
     activePromptFormat = format;
 }
@@ -1113,7 +1188,7 @@ function renderGlossaryRows() {
         const srcInput = document.createElement('input');
         srcInput.type = 'text';
         srcInput.value = entry.source;
-        srcInput.placeholder = 'Source term';
+        srcInput.placeholder = t('glossary.placeholderSource');
         srcInput.addEventListener('input', () => {
             glossaryEditorRows[idx].source = srcInput.value;
             markGlossaryDirty();
@@ -1122,7 +1197,7 @@ function renderGlossaryRows() {
         const tgtInput = document.createElement('input');
         tgtInput.type = 'text';
         tgtInput.value = entry.target;
-        tgtInput.placeholder = '(keep as-is)';
+        tgtInput.placeholder = t('glossary.placeholderKeep');
         tgtInput.addEventListener('input', () => {
             glossaryEditorRows[idx].target = tgtInput.value;
             markGlossaryDirty();
@@ -1131,7 +1206,7 @@ function renderGlossaryRows() {
         const delBtn = document.createElement('button');
         delBtn.className = 'glossary-row-delete';
         delBtn.textContent = '×';
-        delBtn.title = 'Remove term';
+        delBtn.title = t('glossary.removeTerm');
         delBtn.addEventListener('click', () => {
             glossaryEditorRows.splice(idx, 1);
             markGlossaryDirty();
@@ -1153,15 +1228,27 @@ function updateGlossaryRowsNote(matchCount, shownCount, filtered) {
     const total = glossaryEditorRows.length;
 
     if (!total) {
-        note.textContent = 'No terms yet. Add one below or import a TSV.';
+        note.textContent = t('glossary.noteEmpty');
     } else if (filtered && shownCount < matchCount) {
-        note.textContent = `Showing ${shownCount} of ${matchCount.toLocaleString()} matches (${total.toLocaleString()} terms total). Narrow the filter to see the rest.`;
+        note.textContent = t('glossary.noteFilteredCapped', {
+            shown: shownCount.toLocaleString(),
+            matched: matchCount.toLocaleString(),
+            total: total.toLocaleString()
+        });
     } else if (filtered) {
-        note.textContent = `${matchCount.toLocaleString()} of ${total.toLocaleString()} terms match.`;
+        note.textContent = t('glossary.noteFiltered', {
+            matched: matchCount.toLocaleString(),
+            total: total.toLocaleString()
+        });
     } else if (shownCount < total) {
-        note.textContent = `Showing the first ${shownCount} of ${total.toLocaleString()} terms. Use the filter to reach the others; all ${total.toLocaleString()} are kept when you save.`;
+        note.textContent = t('glossary.noteCapped', {
+            shown: shownCount.toLocaleString(),
+            total: total.toLocaleString()
+        });
+    } else if (total === 1) {
+        note.textContent = t('glossary.noteTotalOne');
     } else {
-        note.textContent = `${total.toLocaleString()} term${total === 1 ? '' : 's'}.`;
+        note.textContent = t('glossary.noteTotal', { total: total.toLocaleString() });
     }
     note.hidden = false;
 }
@@ -1179,10 +1266,10 @@ function updateGlossaryVisibility() {
 function updateGlossaryBadge(count) {
     if (!elements.glossaryStatusBadge) return;
     if (!count) {
-        elements.glossaryStatusBadge.textContent = '0 terms';
+        elements.glossaryStatusBadge.textContent = t('glossary.badgeZero');
         elements.glossaryStatusBadge.className = 'glossary-badge';
     } else {
-        elements.glossaryStatusBadge.textContent = `${count.toLocaleString()} term${count === 1 ? '' : 's'}`;
+        elements.glossaryStatusBadge.textContent = t('glossary.badgeCount', { count: count.toLocaleString() });
         elements.glossaryStatusBadge.className = 'glossary-badge loaded';
     }
 }
@@ -1202,7 +1289,7 @@ async function refreshGlossaryStatus() {
         renderGlossaryRows();
         updateGlossaryBadge(0);
         if (elements.glossaryRowsNote) {
-            elements.glossaryRowsNote.textContent = 'Could not load the glossary. Reload this page to try again.';
+            elements.glossaryRowsNote.textContent = t('glossary.loadFailed');
         }
         markGlossaryClean();
         return;
@@ -1256,7 +1343,7 @@ function setupEventListeners() {
     if (elements.refreshModels) {
         elements.refreshModels.addEventListener('click', async () => {
             await loadModels();
-            showToast('Models refreshed');
+            showToast(t('toast.modelsRefreshed'));
         });
     }
 
@@ -1270,9 +1357,9 @@ function setupEventListeners() {
         ]);
         await saveCurrentSettings();
         if (!granted) {
-            showToast('Saved, but permission for the custom server was denied. Remote models won\'t load until you allow it.', 'error', 5000);
+            showToast(t('toast.customServerDenied'), 'error', 5000);
         } else {
-            showToast('Settings saved!');
+            showToast(t('toast.saved'));
         }
     });
 
@@ -1285,9 +1372,15 @@ function setupEventListeners() {
             type: 'SAVE_SETTINGS',
             settings: currentSettings
         });
+        // The reset also restores uiLanguage ('auto'), so re-resolve the UI
+        // language before repainting.
+        setUiLanguage(resolveUiLanguage());
+        updateUiLangToggle();
+        applyI18nStatic();
         applySettingsToUI();
+        refreshI18nDynamic();
         await loadModels();
-        showToast('Settings reset to defaults');
+        showToast(t('toast.resetToDefaults'));
     });
 
     // Clear translation cache
@@ -1296,9 +1389,9 @@ function setupEventListeners() {
             try {
                 await browserAPI.runtime.sendMessage({ type: 'CLEAR_CACHE' });
                 await refreshCacheCount();
-                showToast('Translation cache cleared');
+                showToast(t('cache.cleared'));
             } catch (e) {
-                showToast('Failed to clear cache', 'error');
+                showToast(t('cache.clearFailed'), 'error');
             }
         });
     }
@@ -1352,7 +1445,7 @@ function setupEventListeners() {
     if (elements.saveGlossary) {
         elements.saveGlossary.addEventListener('click', async () => {
             if (!glossaryEditorLoaded) {
-                showToast('Glossary not loaded. Reload the page before saving', 'error');
+                showToast(t('toast.glossaryNotLoadedSave'), 'error');
                 return;
             }
             const entries = glossaryEditorRows
@@ -1372,9 +1465,9 @@ function setupEventListeners() {
             if (res && res.ok) {
                 glossaryEditorTargetLang = targetLang;
                 await refreshGlossaryStatus();
-                showToast(`Glossary saved: ${res.count} terms`);
+                showToast(t('toast.glossarySaved', { count: res.count.toLocaleString() }));
             } else {
-                showToast('Failed to save glossary', 'error');
+                showToast(t('toast.glossarySaveFailed'), 'error');
             }
         });
     }
@@ -1382,14 +1475,14 @@ function setupEventListeners() {
     // Glossary: clear all
     if (elements.clearGlossary) {
         elements.clearGlossary.addEventListener('click', async () => {
-            if (!confirm('Clear all glossary terms?')) return;
+            if (!confirm(t('confirm.clearGlossary'))) return;
             const res = await browserAPI.runtime.sendMessage({ type: 'CLEAR_GLOSSARY' });
             if (res && res.ok) {
                 glossaryEditorTargetLang = '';
                 await refreshGlossaryStatus();
-                showToast('Glossary cleared');
+                showToast(t('toast.glossaryCleared'));
             } else {
-                showToast('Failed to clear glossary', 'error');
+                showToast(t('toast.glossaryClearFailed'), 'error');
             }
         });
     }
@@ -1400,7 +1493,7 @@ function setupEventListeners() {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
             if (!glossaryEditorLoaded) {
-                showToast('Glossary not loaded. Reload the page before importing', 'error');
+                showToast(t('toast.glossaryNotLoadedImport'), 'error');
                 e.target.value = '';
                 return;
             }
@@ -1408,7 +1501,7 @@ function setupEventListeners() {
                 const text = await file.text();
                 const { entries, target } = parseGlossaryTSV(text);
                 if (!entries.length) {
-                    showToast('No valid entries found in file', 'error');
+                    showToast(t('toast.noValidEntries'), 'error');
                     return;
                 }
                 // Merge into editor: imported entries override existing ones with same source
@@ -1419,9 +1512,9 @@ function setupEventListeners() {
                 renderGlossaryRows();
                 updateGlossaryBadge(glossaryEditorRows.length);
                 markGlossaryDirty();
-                showToast(`Imported ${entries.length} terms. Click Save to apply`);
+                showToast(t('toast.imported', { count: entries.length.toLocaleString() }));
             } catch (err) {
-                showToast('Failed to read file', 'error');
+                showToast(t('toast.fileReadFailed'), 'error');
             } finally {
                 e.target.value = '';
             }
@@ -1461,9 +1554,9 @@ function setupEventListeners() {
 {%- endif -%}`;
 
         navigator.clipboard.writeText(template).then(() => {
-            showToast('Template copied to clipboard!');
+            showToast(t('toast.templateCopied'));
         }).catch(() => {
-            showToast('Failed to copy template', 'error');
+            showToast(t('toast.templateCopyFailed'), 'error');
         });
     });
 }
@@ -1557,7 +1650,7 @@ function renderChipList(container, values, onRemove, labelFor) {
     if (!values.length) {
         const empty = document.createElement('span');
         empty.className = 'chip-empty';
-        empty.textContent = 'None yet.';
+        empty.textContent = t('chips.empty');
         container.appendChild(empty);
         return;
     }
@@ -1572,7 +1665,7 @@ function renderChipList(container, values, onRemove, labelFor) {
         remove.className = 'chip-remove';
         remove.type = 'button';
         remove.textContent = '×';
-        remove.title = 'Remove';
+        remove.title = t('chips.remove');
         remove.addEventListener('click', () => onRemove(idx));
 
         chip.append(text, remove);
@@ -1646,12 +1739,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const ok = await applyAllSitesFeature('floatingButton', enabled);
         if (!ok) {
             elements.floatingButton.checked = false;
-            showToast('Permission denied. Floating button not enabled', 'error');
+            showToast(t('toast.floatingDenied'), 'error');
             return;
         }
         showToast(enabled
-            ? 'Floating button enabled. Reload pages to activate'
-            : 'Floating button disabled');
+            ? t('toast.floatingEnabled')
+            : t('toast.floatingDisabled'));
     });
 
     if (elements.autoTranslatePages) {
@@ -1660,13 +1753,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const ok = await applyAllSitesFeature('autoTranslatePages', enabled);
             if (!ok) {
                 elements.autoTranslatePages.checked = false;
-                showToast('Permission denied. Auto-translate not enabled', 'error');
+                showToast(t('toast.autoTranslateDenied'), 'error');
                 return;
             }
             renderAutoTranslateLists();
             showToast(enabled
-                ? 'Auto-translate enabled. Reload pages to activate'
-                : 'Auto-translate disabled');
+                ? t('toast.autoTranslateEnabled')
+                : t('toast.autoTranslateDisabled'));
         });
     }
 
@@ -1678,7 +1771,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? currentSettings.autoTranslateNeverLanguages
                 : [];
             if (langs.includes(code)) {
-                showToast('Already in the list', 'warning');
+                showToast(t('toast.alreadyInList'), 'warning');
                 return;
             }
             langs.push(code);
@@ -1691,14 +1784,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const addSite = () => {
             const host = normalizeSiteEntry(elements.neverSiteInput.value);
             if (!host) {
-                showToast('Enter a hostname like example.com', 'error');
+                showToast(t('toast.invalidHostname'), 'error');
                 return;
             }
             const sites = Array.isArray(currentSettings.autoTranslateNeverSites)
                 ? currentSettings.autoTranslateNeverSites
                 : [];
             if (sites.includes(host)) {
-                showToast('Already in the list', 'warning');
+                showToast(t('toast.alreadyInList'), 'warning');
                 return;
             }
             sites.push(host);

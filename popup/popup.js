@@ -27,6 +27,8 @@ const DEFAULT_SETTINGS = {
     showGlow: true,
     numCtx: 0,
     cacheMode: 'off',
+    // Popup UI language, follows the settings page ('auto' | 'en' | 'ja')
+    uiLanguage: 'auto',
     debug: false,
     floatingButton: false,
     autoTranslatePages: false,
@@ -86,7 +88,7 @@ let detectedPageLanguage = 'en';
 // Detect page language from active tab (using programmatic injection)
 async function detectPageLanguage() {
     if (elements.detectedLang) {
-        elements.detectedLang.textContent = 'Detecting...';
+        elements.detectedLang.textContent = t('status.detecting');
     }
 
     try {
@@ -121,7 +123,7 @@ async function detectPageLanguage() {
     } catch (e) {
         console.error('Language detection failed:', e);
         if (elements.detectedLang) {
-            elements.detectedLang.textContent = 'unknown';
+            elements.detectedLang.textContent = t('status.unknown');
         }
     }
 }
@@ -130,7 +132,11 @@ async function detectPageLanguage() {
 function populateSourceLangOverride() {
     if (!elements.sourceLangOverride) return;
 
-    elements.sourceLangOverride.innerHTML = '<option value="auto">Use detected</option>';
+    elements.sourceLangOverride.replaceChildren();
+    const autoOption = document.createElement('option');
+    autoOption.value = 'auto';
+    autoOption.textContent = t('sourceLang.useDetected');
+    elements.sourceLangOverride.appendChild(autoOption);
     const sortedLangs = Object.entries(LANGUAGES).sort((a, b) => a[1].localeCompare(b[1]));
 
     for (const [code, name] of sortedLangs) {
@@ -164,12 +170,39 @@ function showToast(message, type = 'success', duration = 3000) {
     }, duration);
 }
 
+// ============================================================================
+// UI language — the popup follows the language chosen on the settings page
+// (settings.uiLanguage: 'auto' resolves from the browser locale). Static HTML
+// is painted in the detected locale when popup-i18n.js loads; once settings
+// arrive we resolve the saved preference and, if it differs, re-paint.
+// ============================================================================
+
+function resolvePopupUiLanguage() {
+    if (currentSettings.uiLanguage === 'ja' || currentSettings.uiLanguage === 'en') {
+        return currentSettings.uiLanguage;
+    }
+    return detectUiLanguage();
+}
+
+// Re-render the pieces whose text is computed in JS (static HTML is covered
+// by applyI18nStatic). applySettingsToUI() runs right after this in init(),
+// so values overwritten here get restored from settings.
+function refreshI18nDynamic() {
+    langPicker.setValue(langPicker.getValue());
+    if (modelPicker.getValue()) modelPicker.setValue(modelPicker.getValue());
+    populateSourceLangOverride();
+    elements.restoreBtn.textContent = t('restore.original');
+}
+
 // Initialize popup
 async function init() {
     populateLanguageDropdown();
     initModelPicker();
     populateSourceLangOverride();
     await loadSettings();
+    setUiLanguage(resolvePopupUiLanguage());
+    applyI18nStatic();
+    refreshI18nDynamic();
     applySettingsToUI();
     setupEventListeners();
     refreshCacheCount();
@@ -350,14 +383,17 @@ function createPicker(config) {
             }
 
             if (pinnedItems.length) {
-                list.appendChild(this.makeGroupLabel('Pinned'));
+                list.appendChild(this.makeGroupLabel(
+                    config.pinnedGroupLabel ? config.pinnedGroupLabel() : 'Pinned'));
                 pinnedItems.forEach(i => list.appendChild(this.makeOption(i, true)));
                 if (restItems.length) {
                     const sep = document.createElement('li');
                     sep.className = 'lang-separator';
                     sep.setAttribute('aria-hidden', 'true');
                     list.appendChild(sep);
-                    list.appendChild(this.makeGroupLabel(config.restGroupLabel));
+                    const restLabel = typeof config.restGroupLabel === 'function'
+                        ? config.restGroupLabel() : config.restGroupLabel;
+                    list.appendChild(this.makeGroupLabel(restLabel));
                 }
             }
             restItems.forEach(i => list.appendChild(this.makeOption(i, false)));
@@ -393,7 +429,7 @@ function createPicker(config) {
             pinBtn.type = 'button';
             pinBtn.className = 'lang-pin-btn';
             pinBtn.innerHTML = PIN_ICON_SVG;
-            pinBtn.title = pinned ? `Unpin ${name}` : `Pin ${name}`;
+            pinBtn.title = pinned ? t('picker.unpin', { name }) : t('picker.pin', { name });
             pinBtn.setAttribute('aria-label', pinBtn.title);
             pinBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -461,8 +497,9 @@ const langPicker = createPicker({
     getItems: () => Object.entries(LANGUAGES),
     getId: (entry) => entry[0],
     getName: (entry) => entry[1],
-    restGroupLabel: 'All languages',
-    emptyText: () => 'No languages match your search',
+    pinnedGroupLabel: () => t('picker.pinned'),
+    restGroupLabel: () => t('picker.allLanguages'),
+    emptyText: () => t('picker.noLangMatch'),
     labelFor: (code) => LANGUAGES[code] || code,
     isValidId: (code) => !!LANGUAGES[code],
     initialValue: 'en',
@@ -483,11 +520,12 @@ const modelPicker = createPicker({
     getItems: () => modelPicker.allModels,
     getId: (m) => m.id,
     getName: (m) => m.name,
-    restGroupLabel: 'All models',
-    emptyText: () => modelPicker.allModels.length === 0 ? 'No models available' : 'No models match your search',
+    pinnedGroupLabel: () => t('picker.pinned'),
+    restGroupLabel: () => t('picker.allModels'),
+    emptyText: () => modelPicker.allModels.length === 0 ? t('picker.noModels') : t('picker.noModelMatch'),
     labelFor: (id) => {
         const m = modelPicker.allModels.find(x => x.id === id);
-        return m ? m.name : (id || 'Select a model');
+        return m ? m.name : (id || t('model.select'));
     },
     decorateOption: (li, m) => {
         const badge = document.createElement('span');
@@ -634,7 +672,7 @@ async function checkProviders() {
     } catch (e) {
         lastProviderDetect = null;
         statusDot.className = 'status-dot error';
-        statusWrapper.title = 'Error checking providers';
+        statusWrapper.title = t('status.checkError');
         providersAvailable = false;
         providersBlocked = false;
         showSetupBanner();
@@ -689,19 +727,19 @@ function updateProviderStatusUI() {
 
     if (connected) {
         statusDot.className = 'status-dot connected';
-        statusWrapper.title = `Connected: ${connectedProviders.join(', ')}`;
+        statusWrapper.title = t('status.connected', { providers: connectedProviders.join(', ') });
         providersAvailable = true;
         hideSetupBanner();
     } else if (blocked) {
         statusDot.className = 'status-dot error';
         statusWrapper.title = blockedType === 'ollama'
-            ? 'Ollama is running but blocking the extension (CORS)'
-            : 'LMStudio is running but blocking the extension (CORS)';
+            ? t('status.corsOllama')
+            : t('status.corsLmstudio');
         providersAvailable = false;
         showSetupBanner(blockedType === 'ollama' ? 'cors-blocked-ollama' : 'cors-blocked-lmstudio');
     } else {
         statusDot.className = 'status-dot error';
-        statusWrapper.title = 'No providers found';
+        statusWrapper.title = t('status.noProviders');
         providersAvailable = false;
         showSetupBanner();
     }
@@ -713,52 +751,14 @@ function updateProviderStatusUI() {
     }
 }
 
+// Banner copy lives in the popup i18n dictionary (keys banner.*) because the
+// variants carry their own markup; the strings are our own, so innerHTML use
+// here is unchanged from before.
 function bannerHTML(type) {
-    if (type === 'no-models') {
-        return `
-            <div style="font-weight: bold; margin-bottom: 4px; color: var(--yellow, #dbbc7f);">No translation models found</div>
-            <div>Your LLM provider is connected, but you have not downloaded a translation model yet.</div>
-            <div style="margin-top: 6px;">Recommended model:</div>
-            <div style="background: var(--bg1, #2b2b2b); padding: 4px 8px; border-radius: 4px; font-family: monospace; display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
-                <code>ollama pull translategemma</code>
-            </div>
-            <div style="margin-top: 6px; font-size: 11px; opacity: 0.8;">Or download a model in LMStudio (search for "translate"). Click the refresh button above when done.</div>
-        `;
-    }
-    if (type === 'cors-blocked-ollama') {
-        return `
-            <div style="font-weight: bold; margin-bottom: 4px; color: var(--yellow, #dbbc7f);">Ollama is blocking the extension</div>
-            <div>Ollama is running, but it is not allowing requests from browser extensions (CORS policy).</div>
-            <div style="margin-top: 6px;">Fix: start Ollama with the environment variable <code style="background: var(--bg1, #2b2b2b); padding: 1px 4px; border-radius: 3px;">OLLAMA_ORIGINS=*</code> (e.g. add <code style="background: var(--bg1, #2b2b2b); padding: 1px 4px; border-radius: 3px;">Environment="OLLAMA_ORIGINS=*"</code> to its systemd unit, or set it in the app's environment).</div>
-            <div style="margin-top: 6px; font-size: 11px; opacity: 0.8;"><a href="https://github.com/Eldoprano/offline-browser-translate/blob/main/docs/ollama-cors-setup.md" target="_blank" style="color: var(--accent, #a7c080);">More detailed instructions here</a>. Click the refresh button above when done.</div>
-        `;
-    }
-    if (type === 'cors-blocked-lmstudio') {
-        return `
-            <div style="font-weight: bold; margin-bottom: 4px; color: var(--yellow, #dbbc7f);">LM Studio is blocking the extension</div>
-            <div>LM Studio server is running, but Cross-Origin Resource Sharing (CORS) is disabled.</div>
-            <div style="margin-top: 6px; line-height: 1.4;">
-                To enable CORS:
-                <ol style="margin: 4px 0; padding-left: 18px;">
-                    <li>Open <b>LM Studio</b></li>
-                    <li>Go to the <b>Developer</b> tab (server icon on the left sidebar)</li>
-                    <li>Under <b>Server Settings</b>, activate <b>"Enable CORS"</b></li>
-                    <li>Restart the server</li>
-                </ol>
-            </div>
-            <div style="margin-top: 6px; font-size: 11px; opacity: 0.8;">Click the refresh button above when done.</div>
-        `;
-    }
-    return `
-        <div style="font-weight: bold; margin-bottom: 4px; color: var(--yellow, #dbbc7f);">No LLM provider detected</div>
-        <div>To use this extension, you need a local LLM server running:</div>
-        <ol style="margin: 6px 0 2px 18px; padding: 0;">
-            <li>Install <a href="https://ollama.com" target="_blank" style="color: var(--accent, #a7c080);">Ollama</a> or <a href="https://lmstudio.ai" target="_blank" style="color: var(--accent, #a7c080);">LMStudio</a></li>
-            <li>Load a translation model (e.g. <code style="background: var(--bg1, #2b2b2b); padding: 1px 4px; border-radius: 3px;">ollama pull translategemma</code>)</li>
-            <li>Click the refresh button above</li>
-        </ol>
-        <div style="margin-top: 4px; font-size: 11px; opacity: 0.8;">llama.cpp, vLLM and other OpenAI-compatible servers also work. Put their base URL in the LMStudio URL field.</div>
-    `;
+    if (type === 'no-models') return t('banner.noModels');
+    if (type === 'cors-blocked-ollama') return t('banner.corsOllama');
+    if (type === 'cors-blocked-lmstudio') return t('banner.corsLmstudio');
+    return t('banner.noProvider');
 }
 
 // Show/hide first-run setup guidance banner
@@ -802,7 +802,7 @@ function hideSetupBanner() {
 // Load available models
 async function loadModels(forceRefresh = false) {
     elements.modelTrigger.disabled = true;
-    elements.modelTriggerLabel.textContent = 'Loading models...';
+    elements.modelTriggerLabel.textContent = t('model.loading');
 
     try {
         const response = await browserAPI.runtime.sendMessage({ type: 'LIST_MODELS', forceRefresh });
@@ -810,7 +810,7 @@ async function loadModels(forceRefresh = false) {
 
         if (models.length === 0) {
             modelPicker.setModels([]);
-            elements.modelTriggerLabel.textContent = 'No models found';
+            elements.modelTriggerLabel.textContent = t('model.noneFound');
             elements.modelTrigger.disabled = false;
             if (providersAvailable) {
                 // If any provider is blocked by CORS, prioritize showing the CORS banner
@@ -844,7 +844,7 @@ async function loadModels(forceRefresh = false) {
 
     } catch (e) {
         console.error('Failed to load models:', e);
-        elements.modelTriggerLabel.textContent = 'Error loading models';
+        elements.modelTriggerLabel.textContent = t('model.loadError');
         elements.modelTrigger.disabled = false;
     }
 }
@@ -881,6 +881,7 @@ function resetTranslateButton() {
     elements.translateBtn.querySelector('.btn-text').hidden = false;
     elements.translateBtn.querySelector('.btn-loading').hidden = true;
     elements.cancelBtn.hidden = true;
+    elements.restoreBtn.textContent = t('restore.original');
 }
 
 // Start translation
@@ -890,14 +891,14 @@ async function startTranslation() {
     // --- Pre-flight checks with clear error messages ---
     const model = modelPicker.getValue();
     if (!model) {
-        showToast('Please select a model first', 'error');
+        showToast(t('toast.selectModel'), 'error');
         return;
     }
 
     if (!providersAvailable) {
         showToast(providersBlocked
-            ? 'Your LLM provider is blocking the extension (CORS). See the setup instructions above.'
-            : 'No LLM provider running. Start Ollama or LMStudio first.', 'error');
+            ? t('toast.corsBlocked')
+            : t('toast.noProvider'), 'error');
         return;
     }
 
@@ -976,7 +977,7 @@ async function startTranslation() {
 
     } catch (e) {
         console.error('Translation error:', e);
-        showToast(`Error: ${e.message}`, 'error');
+        showToast(t('toast.error', { message: e.message }), 'error');
 
         // Only reset UI on error
         resetTranslateButton();
@@ -1005,9 +1006,9 @@ async function toggleTranslation() {
 
         // Update button text based on state
         if (response && response.showing === 'translated') {
-            elements.restoreBtn.textContent = 'Original';
+            elements.restoreBtn.textContent = t('restore.original');
         } else {
-            elements.restoreBtn.textContent = response?.hasCache ? 'Translated' : 'Restore';
+            elements.restoreBtn.textContent = response?.hasCache ? t('restore.translated') : t('restore.restore');
         }
     } catch (e) {
         console.error('Toggle error:', e);
@@ -1056,12 +1057,12 @@ function setupEventListeners() {
                 const granted = await browserAPI.permissions.request({ origins: ['<all_urls>'] });
                 if (!granted) {
                     e.target.checked = false;
-                    showToast('Permission denied', 'error');
+                    showToast(t('toast.permissionDenied'), 'error');
                     return;
                 }
-                showToast('Floating button enabled. Reload pages to activate');
+                showToast(t('toast.floatingEnabled'));
             } else {
-                showToast('Floating button disabled');
+                showToast(t('toast.floatingDisabled'));
             }
             currentSettings.floatingButton = e.target.checked;
             await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
@@ -1083,12 +1084,12 @@ function setupEventListeners() {
                 const granted = await browserAPI.permissions.request({ origins: ['<all_urls>'] });
                 if (!granted) {
                     e.target.checked = false;
-                    showToast('Permission denied', 'error');
+                    showToast(t('toast.permissionDenied'), 'error');
                     return;
                 }
-                showToast('Auto-translate enabled. Reload pages to activate');
+                showToast(t('toast.autoTranslateEnabled'));
             } else {
-                showToast('Auto-translate disabled');
+                showToast(t('toast.autoTranslateDisabled'));
             }
             currentSettings.autoTranslatePages = e.target.checked;
             await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
@@ -1115,9 +1116,9 @@ function setupEventListeners() {
                 });
                 if (res && res.sites) currentSettings.autoTranslateNeverSites = res.sites;
                 elements.ignoredSiteNote.hidden = true;
-                showToast('Un-ignored. Reload the page to auto-translate it.');
+                showToast(t('toast.unignored'));
             } catch (e) {
-                showToast('Could not update the site list', 'error');
+                showToast(t('toast.siteListFailed'), 'error');
             }
         });
     }
@@ -1132,9 +1133,9 @@ function setupEventListeners() {
         ]);
         await saveCurrentSettings();
         if (!granted) {
-            showToast('Saved, but permission for the custom server was denied. Remote models won\'t load until you allow it.', 'error', 5000);
+            showToast(t('toast.customServerDenied'), 'error', 5000);
         } else {
-            showToast('Settings saved!');
+            showToast(t('toast.saved'));
         }
         await checkProviders();
         await loadModels();
@@ -1173,8 +1174,13 @@ function setupEventListeners() {
             });
             // Defaults turn off both all-sites features, so drop the registration.
             await browserAPI.runtime.sendMessage({ type: 'SYNC_CONTENT_SCRIPT' });
+            // The reset also restores uiLanguage ('auto'), so re-resolve the
+            // UI language before repainting.
+            setUiLanguage(resolvePopupUiLanguage());
+            applyI18nStatic();
+            refreshI18nDynamic();
             applySettingsToUI();
-            showToast('Settings reset to defaults');
+            showToast(t('toast.resetToDefaults'));
         });
     }
 
@@ -1185,9 +1191,9 @@ function setupEventListeners() {
             try {
                 await browserAPI.runtime.sendMessage({ type: 'CLEAR_CACHE' });
                 await refreshCacheCount();
-                showToast('Translation cache cleared');
+                showToast(t('toast.cacheCleared'));
             } catch (err) {
-                showToast('Failed to clear cache', 'error');
+                showToast(t('toast.cacheClearFailed'), 'error');
             }
         });
     }

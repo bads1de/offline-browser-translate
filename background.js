@@ -40,6 +40,8 @@ const DEFAULT_SETTINGS = {
     // Translation cache: 'persistent' (kept across browser sessions), 'session'
     // (kept until the browser is closed, then wiped), or 'off'. Off by default.
     cacheMode: 'off',
+    // Options page UI language: 'auto' (from browser locale), or 'en' / 'ja'
+    uiLanguage: 'auto',
     debug: false,       // Enable verbose logging
     floatingButton: false, // Show floating translate button on text selection (requires <all_urls> permission)
     useGlossary: false,  // Off by default; when on, injects matching glossary terms into the prompt for consistent proper-noun translation

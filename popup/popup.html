@@ -17,7 +17,8 @@
   <div class="container">
     <header>
       <button type="button" id="openOptionsHeader" class="header-icon-btn header-icon-btn--left"
-        title="Open full settings page" aria-label="Open full settings page">
+        title="Open full settings page" aria-label="Open full settings page"
+        data-i18n-title="openFullSettings">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3"></circle>
@@ -26,15 +27,15 @@
         </svg>
       </button>
       <h1><img src="../icons/icon48.png" alt="" width="24" height="24" class="header-logo">Local Translator</h1>
-      <p class="subtitle">Privacy-first translation with local LLMs</p>
-      <div class="status-dot-wrapper" id="providerStatus" title="Checking...">
+      <p class="subtitle" data-i18n="header.subtitle">Privacy-first translation with local LLMs</p>
+      <div class="status-dot-wrapper" id="providerStatus" title="Checking..." data-i18n-title="status.checking">
         <span class="status-dot"></span>
       </div>
     </header>
 
     <section class="main-controls">
       <div class="form-group">
-        <label for="modelTrigger">Model</label>
+        <label for="modelTrigger" data-i18n="model.label">Model</label>
         <div class="lang-picker" id="modelPickerEl">
           <button type="button" id="modelTrigger" class="lang-picker-trigger model-picker-trigger"
             aria-haspopup="listbox" aria-expanded="false" disabled>
@@ -47,16 +48,16 @@
           <div id="modelMenu" class="lang-picker-menu" hidden>
             <div class="lang-picker-search-wrap">
               <input type="text" id="modelSearch" class="lang-picker-search" placeholder="Search models…"
-                autocomplete="off" spellcheck="false" />
+                data-i18n-placeholder="model.searchPlaceholder" autocomplete="off" spellcheck="false" />
             </div>
             <ul id="modelList" class="lang-picker-list" role="listbox" tabindex="-1"></ul>
           </div>
         </div>
-        <button id="refreshModels" class="icon-btn" title="Refresh models">↻</button>
+        <button id="refreshModels" class="icon-btn" title="Refresh models" data-i18n-title="model.refresh">↻</button>
       </div>
 
       <div class="form-group">
-        <label for="langTrigger">Translate to</label>
+        <label for="langTrigger" data-i18n="lang.to">Translate to</label>
         <div class="lang-picker" id="languagePicker">
           <button type="button" id="langTrigger" class="lang-picker-trigger" aria-haspopup="listbox"
             aria-expanded="false">
@@ -69,7 +70,7 @@
           <div id="langMenu" class="lang-picker-menu" hidden>
             <div class="lang-picker-search-wrap">
               <input type="text" id="langSearch" class="lang-picker-search" placeholder="Search languages…"
-                autocomplete="off" spellcheck="false" />
+                data-i18n-placeholder="lang.searchPlaceholder" autocomplete="off" spellcheck="false" />
             </div>
             <ul id="langList" class="lang-picker-list" role="listbox" tabindex="-1"></ul>
           </div>
@@ -78,22 +79,25 @@
 
       <!-- Source language (only for TranslateGemma) -->
       <div class="form-group source-lang-group" id="sourceLangGroup" hidden>
-        <label>Source language: <span id="detectedLang" class="detected-lang">detecting...</span></label>
+        <label><span data-i18n="sourceLang.label">Source language:</span> <span id="detectedLang"
+            class="detected-lang">detecting...</span></label>
         <select id="sourceLangOverride" class="small-select">
-          <option value="auto">Use detected</option>
+          <option value="auto" data-i18n="sourceLang.useDetected">Use detected</option>
           <!-- Populated dynamically -->
         </select>
       </div>
 
       <div class="button-group">
         <button id="translateBtn" class="primary-btn" disabled>
-          <span class="btn-text">Translate Page</span>
-          <span class="btn-loading" hidden>Translating...</span>
+          <span class="btn-text" data-i18n="translate.page">Translate Page</span>
+          <span class="btn-loading" hidden data-i18n="translate.loading">Translating...</span>
         </button>
-        <button id="cancelBtn" class="cancel-btn" hidden title="Cancel translation">
+        <button id="cancelBtn" class="cancel-btn" hidden title="Cancel translation"
+          data-i18n-title="translate.cancel">
           ✕
         </button>
-        <button id="restoreBtn" class="secondary-btn" title="Toggle original/translated">
+        <button id="restoreBtn" class="secondary-btn" title="Toggle original/translated"
+          data-i18n-title="restore.toggleTitle" data-i18n="restore.original">
           Original
         </button>
       </div>
@@ -101,7 +105,7 @@
 
     <section class="settings-toggle">
       <button id="toggleAdvanced" class="toggle-btn">
-        <span>Quick settings</span>
+        <span data-i18n="adv.quickSettings">Quick settings</span>
         <span class="toggle-arrow">▼</span>
       </button>
     </section>
@@ -110,34 +114,38 @@
       <div class="form-group floating-btn-group">
         <div class="checkbox-row">
           <input type="checkbox" id="floatingButton">
-          <label for="floatingButton">Floating translate button</label>
+          <label for="floatingButton" data-i18n="adv.floatingLabel">Floating translate button</label>
         </div>
-        <p class="floating-btn-hint">Shows a translate button next to selected text. <strong>Requires permission to run
+        <p class="floating-btn-hint"><span data-i18n="adv.floatingHint">Shows a translate button next to selected
+            text.</span> <strong data-i18n="adv.floatingHintReq">Requires permission to run
             on all websites.</strong></p>
       </div>
 
       <div class="form-group floating-btn-group">
         <div class="checkbox-row">
           <input type="checkbox" id="autoTranslatePages">
-          <label for="autoTranslatePages">Auto-translate pages on load</label>
+          <label for="autoTranslatePages" data-i18n="adv.autoLabel">Auto-translate pages on load</label>
         </div>
-        <p class="floating-btn-hint"><strong>Requires permission to run on all websites.</strong> Manage language/site
-          exceptions in <button type="button" id="autoTranslateOptionsLink"
-            class="text-btn inline-link">Settings</button>.</p>
+        <p class="floating-btn-hint"><strong data-i18n="adv.floatingHintReq">Requires permission to run on all
+            websites.</strong> <span data-i18n="adv.autoHint">Manage language/site
+            exceptions in</span> <button type="button" id="autoTranslateOptionsLink"
+            class="text-btn inline-link" data-i18n="adv.settingsLink">Settings</button><span
+            data-i18n="adv.autoHintEnd">.</span></p>
         <p class="floating-btn-hint ignored-site-note" id="ignoredSiteNote" hidden>
-          This site is on the ignore list, so it won't auto-translate.
-          <button type="button" id="unignoreSiteBtn" class="text-btn inline-link">Un-ignore it</button>
+          <span data-i18n="adv.ignoreNote">This site is on the ignore list, so it won't auto-translate.</span>
+          <button type="button" id="unignoreSiteBtn" class="text-btn inline-link"
+            data-i18n="adv.unignore">Un-ignore it</button>
         </p>
       </div>
 
       <hr class="section-divider">
 
       <div class="form-group">
-        <label for="providerSelect">Provider</label>
+        <label for="providerSelect" data-i18n="provider.label">Provider</label>
         <select id="providerSelect">
-          <option value="auto">Auto-detect</option>
-          <option value="ollama">Ollama</option>
-          <option value="lmstudio">LMStudio / OpenAI-compatible</option>
+          <option value="auto" data-i18n="provider.auto">Auto-detect</option>
+          <option value="ollama" data-i18n="provider.ollama">Ollama</option>
+          <option value="lmstudio" data-i18n="provider.lmstudio">LMStudio / OpenAI-compatible</option>
         </select>
       </div>
 
@@ -147,46 +155,52 @@
       </div>
 
       <div class="form-group">
-        <label for="lmstudioUrl">LMStudio / OpenAI-compatible URL (llama.cpp, vLLM…)</label>
+        <label for="lmstudioUrl" data-i18n="lmstudioUrl.label">LMStudio / OpenAI-compatible URL (llama.cpp, vLLM…)</label>
         <input type="text" id="lmstudioUrl" placeholder="http://localhost:1234">
       </div>
 
       <div class="form-group">
-        <label for="cacheMode">Translation cache <span class="new-badge" id="cacheNewBadge" hidden>New</span></label>
+        <label for="cacheMode"><span data-i18n="cache.label">Translation cache</span> <span class="new-badge"
+            id="cacheNewBadge" hidden data-i18n="cache.newBadge">New</span></label>
         <select id="cacheMode">
-          <option value="off">Don't cache</option>
-          <option value="session">Until I close the browser</option>
-          <option value="persistent">Keep across sessions</option>
+          <option value="off" data-i18n="cache.mode.off">Don't cache</option>
+          <option value="session" data-i18n="cache.mode.session">Until I close the browser</option>
+          <option value="persistent" data-i18n="cache.mode.persistent">Keep across sessions</option>
         </select>
-        <p class="floating-btn-hint" id="cacheBackendWarning" hidden>⚠️ This browser doesn't support keeping the cache
+        <p class="floating-btn-hint" id="cacheBackendWarning" hidden data-i18n="cache.backendWarning">⚠️ This browser
+          doesn't support keeping the cache
           across sessions.</p>
-        <button id="clearCache" class="text-btn" title="Delete all cached translations">Clear cache (<span
-            id="cacheCount">…</span>)</button>
+        <button id="clearCache" class="text-btn" title="Delete all cached translations"
+          data-i18n-title="cache.clearTitle"><span
+            data-i18n="cache.clearPrefix">Clear cache (</span><span id="cacheCount">…</span><span
+            data-i18n="cache.clearSuffix">)</span></button>
       </div>
 
       <div class="button-row">
-        <button id="saveSettings" class="primary-btn small">Save Settings</button>
-        <button id="openOptions" class="secondary-btn small" title="Open full settings page">⚙️ More Settings</button>
+        <button id="saveSettings" class="primary-btn small" data-i18n="save.label">Save Settings</button>
+        <button id="openOptions" class="secondary-btn small" title="Open full settings page"
+          data-i18n-title="openFullSettings" data-i18n="moreSettings">⚙️ More Settings</button>
       </div>
-      <button id="resetSettings" class="text-btn">Reset to defaults</button>
+      <button id="resetSettings" class="text-btn" data-i18n="reset.label">Reset to defaults</button>
     </section>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast">
       <span class="toast-icon">✅</span>
-      <span class="toast-message">Settings saved!</span>
+      <span class="toast-message" data-i18n="toast.saved">Settings saved!</span>
     </div>
 
     <footer>
-      <button id="openTranslator" class="secondary-btn" style="width:100%; margin-bottom:8px;">
+      <button id="openTranslator" class="secondary-btn" style="width:100%; margin-bottom:8px;"
+        data-i18n="openTranslator">
         📝 Open Translator
       </button>
-      <p>All translations stay on your device</p>
+      <p data-i18n="footer.privacy">All translations stay on your device</p>
     </footer>
   </div>
 
   <!-- Resize handle — drag to make the popup wider/taller -->
-  <div class="resize-handle" aria-hidden="true" title="Drag to resize">
+  <div class="resize-handle" aria-hidden="true" title="Drag to resize" data-i18n-title="resize.handle">
     <svg viewBox="0 0 12 12" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
       <circle cx="2" cy="2" r="1.3" />
       <circle cx="2" cy="6" r="1.3" />
@@ -198,6 +212,8 @@
   </div>
 
   <script src="../languages.js"></script>
+  <script src="../i18n.js"></script>
+  <script src="popup-i18n.js"></script>
   <script src="popup.js"></script>
 </body>
 
