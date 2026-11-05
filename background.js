@@ -946,6 +946,83 @@ async function callProvider(provider, settings, modelId, systemPrompt, userPromp
     return callLMStudio(settings, modelId, systemPrompt, userPrompt, jsonOutput);
 }
 
+// PLaMo Translate models use a dedicated PFML3 chat template: the source text goes
+// in a single user message, the target language is passed via chat_template_kwargs,
+// and the reply is a bare translation (no JSON). This helper handles that contract
+// for both the OpenAI-compatible (llama.cpp / LM Studio) and Ollama paths.
+async function translatePlamoItem(provider, settings, modelId, text, targetLangCode) {
+    const lang = (targetLangCode || 'ja').toLowerCase();
+    if (provider === 'ollama') {
+        const body = {
+            model: modelId,
+            stream: false,
+            messages: [{ role: 'user', content: text }],
+            options: {}
+        };
+        if (settings.temperature !== undefined) body.options.temperature = settings.temperature;
+        if (settings.numCtx) body.options.num_ctx = settings.numCtx;
+        body.options.stop = ['<|plamo:tag|>', '<|plamo:bos|>'];
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000);
+        let response;
+        try {
+            response = await fetch(`${normalizeServerUrl(settings.ollamaUrl)}/api/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: controller.signal
+            });
+        } catch (e) {
+            clearTimeout(timeoutId);
+            if (e.name === 'AbortError') throw new Error('Ollama request timed out after 5 minutes');
+            throw e;
+        }
+        clearTimeout(timeoutId);
+        if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Ollama error (${response.status}): ${error || '(empty response)'}`);
+        }
+        const data = await response.json();
+        const content = data.message?.content || data.response || '';
+        return cleanTranslationText((content || '').trim());
+    }
+    // OpenAI-compatible path (llama.cpp server, LM Studio, vLLM, ...)
+    const body = {
+        model: modelId,
+        messages: [{ role: 'user', content: text }],
+        temperature: settings.temperature !== undefined ? settings.temperature : 0.3,
+        stream: false,
+        stop: ['<|plamo:tag|>', '<|plamo:bos|>'],
+        chat_template_kwargs: { target_lang: lang }
+    };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
+    let response;
+    try {
+        response = await fetch(`${normalizeServerUrl(settings.lmstudioUrl)}/v1/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal
+        });
+    } catch (e) {
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError') throw new Error('Request timed out after 5 minutes');
+        if (e instanceof TypeError) {
+            throw new Error('Failed to connect to the server. CORS policy or server offline.');
+        }
+        throw e;
+    }
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Server error (${response.status}): ${error || '(empty response)'}`);
+    }
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    return cleanTranslationText((content || '').trim());
+}
+
 // Translate a single text as plain text (no JSON), used as the last-resort
 // fallback when structured output keeps failing. The whole response IS the
 // translation — nothing to parse, nothing to break the page.
@@ -985,6 +1062,7 @@ async function translate(textItems, targetLanguage, settings) {
     // Resolve the effective request format ('auto' -> derived from the model).
     const format = resolveRequestFormat(settings, modelId);
     const isPlainText = PLAIN_TEXT_FORMATS.has(format);
+    const plamoMode = format === 'plamo' || settings.plamoMode === true || /plamo/i.test(modelId || '');
     const template = PROMPT_TEMPLATES[format] || PROMPT_TEMPLATES.default;
 
     // A per-format override (edited and saved on the options page) wins over the
@@ -1014,6 +1092,7 @@ async function translate(textItems, targetLanguage, settings) {
     // Run one batched request for the given subset of items, returning a Map of
     // id -> good translation text (suspicious/empty results are dropped).
     const requestBatch = async (items) => {
+        if (plamoMode) return new Map();
         // Map items to 0-indexed sequential IDs for the prompt to avoid confusing the LLM
         const mappedItems = items.map((item, index) => ({ id: index, text: item.text, originalId: item.id }));
         
@@ -1052,6 +1131,9 @@ async function translate(textItems, targetLanguage, settings) {
     // unmarked segment — the shape these models were trained on. There is no batch
     // structure to parse, so the result cannot land on the wrong item.
     const requestOne = async (text) => {
+        if (plamoMode) {
+            return await translatePlamoItem(provider, settings, modelId, text, targetLanguage);
+        }
         const vars = { ...baseVars, texts: text };
         const { content } = await callProvider(provider, settings, modelId,
             buildPrompt(systemTemplate, vars), buildPrompt(userTemplate, vars), false);
@@ -1142,30 +1224,32 @@ async function translate(textItems, targetLanguage, settings) {
     // missing or malformed. maxOutputRetries extra attempts after the first.
     const maxRetries = Number.isInteger(settings.maxOutputRetries) ? settings.maxOutputRetries : 2;
     debugLog(`[Background] translate: provider=${provider} model=${modelId} format=${format} items=${textItems.length} json=${wantJson}`);
-    for (let attempt = 0; attempt <= maxRetries && pending.length > 0; attempt++) {
-        let good;
-        try {
-            good = await requestBatch(pending);
-        } catch (e) {
-            if (attempt === maxRetries) throw e; // bubble transport errors on last try
-            debugWarn(`[Background] batch attempt ${attempt + 1} threw:`, e.message);
-            continue;
-        }
-        for (const item of pending) {
-            const text = good.get(item.id);
-            if (text !== undefined) results.set(item.id, text);
-        }
-        pending = pending.filter(item => !results.has(item.id));
-        if (pending.length) {
-            debugWarn(`[Background] ${pending.length} item(s) malformed/missing after attempt ${attempt + 1}`);
-        }
-        // Nothing usable at all from a multi-item batch means the response could not
-        // be aligned. Re-sending identical input to a near-deterministic model just
-        // reproduces the same failure, so skip the remaining retries and let the
-        // per-item fallback below resolve it.
-        if (good.size === 0 && pending.length > 1) {
-            debugWarn(`[Background] batch unusable - skipping remaining retries`);
-            break;
+    if (!plamoMode) {
+        for (let attempt = 0; attempt <= maxRetries && pending.length > 0; attempt++) {
+            let good;
+            try {
+                good = await requestBatch(pending);
+            } catch (e) {
+                if (attempt === maxRetries) throw e; // bubble transport errors on last try
+                debugWarn(`[Background] batch attempt ${attempt + 1} threw:`, e.message);
+                continue;
+            }
+            for (const item of pending) {
+                const text = good.get(item.id);
+                if (text !== undefined) results.set(item.id, text);
+            }
+            pending = pending.filter(item => !results.has(item.id));
+            if (pending.length) {
+                debugWarn(`[Background] ${pending.length} item(s) malformed/missing after attempt ${attempt + 1}`);
+            }
+            // Nothing usable at all from a multi-item batch means the response could not
+            // be aligned. Re-sending identical input to a near-deterministic model just
+            // reproduces the same failure, so skip the remaining retries and let the
+            // per-item fallback below resolve it.
+            if (good.size === 0 && pending.length > 1) {
+                debugWarn(`[Background] batch unusable - skipping remaining retries`);
+                break;
+            }
         }
     }
 

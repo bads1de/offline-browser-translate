@@ -40,6 +40,7 @@ const FORMAT_DESCRIPTIONS = {
     default: 'Standard JSON output format. Best for most models.',
     translategemma: 'Specialized format for TranslateGemma models.',
     hunyuan: 'Format optimized for Hunyuan-MT models. No system message.',
+    plamo: 'PLaMo Translate models via llama.cpp / OpenAI-compatible server. Sends the source text as a single user message with target_lang.',
     simple: 'Simple line-by-line output for smaller models.',
     custom: 'Your custom prompts. Edit below.'
 };
@@ -61,6 +62,10 @@ Maintain the original meaning, tone, and formatting. Do not add explanations.`,
     hunyuan: {
         system: '',
         user: `Translate the following segment into {{targetLanguage}}, without additional explanation.\n{{texts}}`
+    },
+    plamo: {
+        system: '',
+        user: `{{texts}}`
     },
     translategemma: {
         system: '',
@@ -634,6 +639,7 @@ const REQUEST_FORMAT_OPTIONS = [
     { value: 'default', label: 'Default (JSON output)' },
     { value: 'translategemma', label: 'TranslateGemma' },
     { value: 'hunyuan', label: 'Hunyuan-MT' },
+    { value: 'plamo', label: 'PLaMo Translate' },
     { value: 'simple', label: 'Simple (Line-by-line)' },
     { value: 'custom', label: 'Custom' },
 ];
