@@ -104,7 +104,7 @@ function getCurrentTheme() {
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     els.themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
-    els.themeToggle.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+    els.themeToggle.title = theme === 'dark' ? t('theme.toDark') : t('theme.toLight');
 }
 
 function toggleTheme() {
@@ -123,10 +123,9 @@ function toggleTheme() {
 // already treats sourceLanguage:'auto' as "unspecified, default to English if
 // the active format needs it" (see translate() in background.js).
 const AUTO_SOURCE_CODE = 'auto';
-const AUTO_SOURCE_LABEL = 'Auto-detect';
 
 function langDisplayName(code) {
-    return code === AUTO_SOURCE_CODE ? AUTO_SOURCE_LABEL : (LANGUAGES[code] || code);
+    return code === AUTO_SOURCE_CODE ? t('lang.autoDetect') : (LANGUAGES[code] || code);
 }
 
 function buildLanguageSelector(type) {
@@ -142,7 +141,7 @@ function buildLanguageSelector(type) {
     if (type === 'source') {
         const autoChip = document.createElement('button');
         autoChip.className = 'lang-chip' + (currentLang === AUTO_SOURCE_CODE ? ' active' : '');
-        autoChip.textContent = AUTO_SOURCE_LABEL;
+        autoChip.textContent = t('lang.autoDetect');
         autoChip.dataset.code = AUTO_SOURCE_CODE;
         autoChip.type = 'button';
         autoChip.addEventListener('click', () => selectLanguage(type, AUTO_SOURCE_CODE));
@@ -156,7 +155,7 @@ function buildLanguageSelector(type) {
         autoCodeSpan.className = 'lang-code';
         autoCodeSpan.textContent = '—';
         const autoNameSpan = document.createElement('span');
-        autoNameSpan.textContent = AUTO_SOURCE_LABEL;
+        autoNameSpan.textContent = t('lang.autoDetect');
         autoItem.appendChild(autoCodeSpan);
         autoItem.appendChild(autoNameSpan);
         autoItem.addEventListener('click', () => selectLanguage(type, AUTO_SOURCE_CODE));
@@ -266,7 +265,7 @@ function swapLanguages() {
     // Target must stay a concrete language — nothing sensible to swap into it
     // when source is unspecified.
     if (sourceLanguage === AUTO_SOURCE_CODE) {
-        showToast('Pick a specific source language first', 'error');
+        showToast(t('toast.pickSourceLang'), 'error');
         return;
     }
 
@@ -284,7 +283,7 @@ function swapLanguages() {
         els.targetOutput.textContent = '';
         const placeholder = document.createElement('span');
         placeholder.className = 'placeholder-text';
-        placeholder.textContent = 'Translation will appear here...';
+        placeholder.textContent = t('output.placeholder');
         els.targetOutput.appendChild(placeholder);
         els.copyBtn.hidden = true;
         els.translationInfo.textContent = '';
@@ -305,7 +304,7 @@ async function translateText() {
     if (!text || isTranslating) return;
 
     if (!selectedModel) {
-        showTranslationError('No model available. Start Ollama or LMStudio and reload.');
+        showTranslationError(t('error.noModel'));
         return;
     }
 
@@ -347,7 +346,7 @@ async function translateText() {
             const processedText = leadingSpace + trimmedTranslation + effectiveTrailingSpace;
             showTranslation(processedText);
         } else {
-            showTranslationError('No translation returned');
+            showTranslationError(t('error.noTranslation'));
         }
     } catch (e) {
         console.error('Translation error:', e);
@@ -379,7 +378,7 @@ function showTranslationError(message) {
     const span = document.createElement('span');
     span.className = 'placeholder-text';
     span.style.color = 'var(--red)';
-    span.textContent = `Error: ${message}`;
+    span.textContent = t('error.prefix', { message });
     els.targetOutput.appendChild(span);
     els.copyBtn.hidden = true;
     els.translationInfo.textContent = '';
@@ -394,9 +393,9 @@ function copyTranslation() {
     if (!outputEl) return;
 
     navigator.clipboard.writeText(outputEl.textContent).then(() => {
-        showToast('Copied to clipboard!');
+        showToast(t('toast.copiedClipboard'));
     }).catch(() => {
-        showToast('Failed to copy', 'error');
+        showToast(t('toast.copyFailed'), 'error');
     });
 }
 
@@ -406,7 +405,7 @@ function copyTranslation() {
 
 function updateCharCount() {
     const len = els.sourceText.value.length;
-    els.charCount.textContent = `${len} character${len !== 1 ? 's' : ''}`;
+    els.charCount.textContent = len === 1 ? t('charCount.one') : t('charCount.other', { len });
     els.clearBtn.hidden = len === 0;
 }
 
@@ -461,22 +460,22 @@ async function checkStatus() {
         if (connected) {
             dot.className = 'status-dot connected';
             els.statusText.textContent = connectedProviders.join(' + ');
-            els.statusIndicator.title = `Connected: ${connectedProviders.join(', ')}`;
+            els.statusIndicator.title = t('status.title.connected', { providers: connectedProviders.join(', ') });
         } else if (blocked) {
             dot.className = 'status-dot error';
-            els.statusText.textContent = 'CORS Blocked';
+            els.statusText.textContent = t('status.corsBlocked');
             els.statusIndicator.title = blockedType === 'ollama'
-                ? 'Ollama is running but blocking the extension (CORS). Enable CORS in Ollama.'
-                : 'LMStudio is running but blocking the extension (CORS). Enable CORS in LMStudio Developer settings.';
+                ? t('status.title.corsOllama')
+                : t('status.title.corsLmstudio');
         } else {
             dot.className = 'status-dot error';
-            els.statusText.textContent = 'No provider';
-            els.statusIndicator.title = 'No LLM providers found. Start Ollama or LMStudio.';
+            els.statusText.textContent = t('status.noProvider');
+            els.statusIndicator.title = t('status.title.noProviders');
         }
     } catch (e) {
         dot.className = 'status-dot error';
-        els.statusText.textContent = 'Error';
-        els.statusIndicator.title = 'Error connecting to extension background';
+        els.statusText.textContent = t('status.error');
+        els.statusIndicator.title = t('status.title.error');
     }
 }
 
@@ -511,15 +510,15 @@ function autoSelectModel(models) {
 }
 
 async function loadModels() {
-    els.modelName.textContent = 'Loading...';
+    els.modelName.textContent = t('model.loadingShort');
 
     try {
         const response = await browserAPI.runtime.sendMessage({ type: 'LIST_MODELS' });
         const models = response.models || [];
 
         if (models.length === 0) {
-            els.modelName.textContent = 'No models';
-            els.modelBadge.title = 'No models found. Make sure Ollama or LMStudio has models loaded.';
+            els.modelName.textContent = t('model.none');
+            els.modelBadge.title = t('model.noneTitle');
             selectedModel = null;
             return;
         }
@@ -537,7 +536,7 @@ async function loadModels() {
             selectedModel = chosen.id;
             selectedModelProvider = chosen.provider;
             els.modelName.textContent = chosen.name || chosen.id;
-            els.modelBadge.title = `Model: ${chosen.id} (${chosen.provider})`;
+            els.modelBadge.title = t('model.badge', { id: chosen.id, provider: chosen.provider });
 
             // Request format is derived from the model automatically (requestFormat: 'auto')
             // by the background script — no need to set it here.
@@ -551,8 +550,8 @@ async function loadModels() {
         }
     } catch (e) {
         console.error('Failed to load models:', e);
-        els.modelName.textContent = 'Error';
-        els.modelBadge.title = 'Failed to load models';
+        els.modelName.textContent = t('model.error');
+        els.modelBadge.title = t('model.errorTitle');
     }
 }
 
@@ -570,6 +569,30 @@ async function loadSettings() {
         console.error('Failed to load settings:', e);
     }
     return currentSettings;
+}
+
+// The translator page follows the UI language chosen on the settings page
+// (settings.uiLanguage: 'auto' resolves from the browser locale). The i18n
+// dictionary file paints with the detected locale first; this re-applies
+// once the saved preference is known, and repaints the runtime-built text.
+function resolveTranslatorUiLanguage() {
+    if (currentSettings.uiLanguage === 'ja' || currentSettings.uiLanguage === 'en') {
+        return currentSettings.uiLanguage;
+    }
+    return detectUiLanguage();
+}
+
+function applyUiLanguage() {
+    setUiLanguage(resolveTranslatorUiLanguage());
+    applyI18nStatic();
+
+    // Repaint runtime-built strings that data-i18n doesn't cover
+    applyTheme(getCurrentTheme());
+    els.sourceLangName.textContent = langDisplayName(sourceLanguage);
+    els.targetLangName.textContent = langDisplayName(targetLanguage);
+    buildLanguageSelector('source');
+    buildLanguageSelector('target');
+    updateCharCount();
 }
 
 // ============================================================================
@@ -683,13 +706,8 @@ async function init() {
         targetLanguage = sourceLanguage === 'en' ? 'es' : 'en';
     }
 
-    // Update UI
-    els.sourceLangName.textContent = langDisplayName(sourceLanguage);
-    els.targetLangName.textContent = langDisplayName(targetLanguage);
-
-    // Build language selectors
-    buildLanguageSelector('source');
-    buildLanguageSelector('target');
+    // Apply the UI language from settings and repaint static + runtime text
+    applyUiLanguage();
 
     // Setup events
     setupEventListeners();
