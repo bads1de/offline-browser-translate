@@ -19,6 +19,24 @@ let debugEnabled = false;
 function debugLog(...args) { if (debugEnabled) console.log(...args); }
 function debugWarn(...args) { if (debugEnabled) console.warn(...args); }
 
+// ============================================================================
+// Perf tracing (lightweight, always-on collector)
+//
+// Pushes { label, ms, ...extra } entries into a global array and mirrors them
+// to debugLog, so a run's timing breakdown is available either programmatically
+// (window.__perfTrace) or in the console with debug logging enabled. Marks the
+// phases of a page translation: DOM scan, per-batch dispatch/done/request/apply,
+// first time translated text lands in the page, and the run total.
+// ============================================================================
+function perfMark(label, ms, extra) {
+    const rounded = Math.round(ms * 10) / 10;
+    try {
+        (globalThis.__perfTrace = globalThis.__perfTrace || []).push(
+            Object.assign({ label, ms: rounded }, extra || {}));
+    } catch (e) { /* collector unavailable - console only */ }
+    debugLog(`[Perf] ${label}${extra && extra.n !== undefined ? ` (n=${extra.n})` : ''}: ${rounded}ms`);
+}
+
 let floatingButtonEnabled = false;
 
 browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' }).then(r => {
@@ -68,6 +86,12 @@ let isShowingTranslations = false; // True if currently showing translations
 // Queue of pending text items to translate (with dynamic priority)
 let pendingTranslationQueue = [];
 let scrollDebounceTimer = null;
+
+// Streaming state shared with the PARTIAL_TRANSLATION message handler: the
+// current run's start timestamp (for perf marks) and how many items have
+// already landed on the page via partial messages.
+let perfRunStartTs = 0;
+let streamedAppliedCount = 0;
 
 // Elements to skip
 const SKIP_TAGS = new Set([
@@ -1001,12 +1025,14 @@ async function translateBatch(textItems, targetLanguage, sourceLanguage = 'auto'
             if (attempt > 0) {
                 debugLog(`[Translator] Retrying batch, attempt ${attempt + 1}/${retries}`);
             }
+            const requestStartTs = performance.now();
             const response = await browserAPI.runtime.sendMessage({
                 type: 'TRANSLATE',
                 texts: textItems,
                 targetLanguage,
                 sourceLanguage: pageLanguage // Pass detected page language for TranslateGemma
             });
+            perfMark('c.request', performance.now() - requestStartTs, { n: textItems.length });
 
             debugLog(`[Translator] translateBatch response:`, response);
 
@@ -1027,6 +1053,7 @@ async function translateBatch(textItems, targetLanguage, sourceLanguage = 'auto'
             const receivedIds = new Set();
 
             // Process received translations
+            const applyStartTs = performance.now();
             for (const t of (translations || [])) {
                 receivedIds.add(t.id);
                 if (!t.error && t.text) {
@@ -1043,6 +1070,7 @@ async function translateBatch(textItems, targetLanguage, sourceLanguage = 'auto'
                     if (original) failed.push(original);
                 }
             }
+            perfMark('c.apply', performance.now() - applyStartTs, { n: translations?.length || 0 });
 
             // Check for items that weren't returned at all
             for (const item of textItems) {
@@ -1111,6 +1139,11 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
     const verb = auto ? 'Auto-translating' : 'Translating';
     startProgressWidget({ auto, message: 'Extracting text...' });
 
+    // Perf run marker: everything measured against this stays on one timeline
+    const runStartTs = performance.now();
+    perfRunStartTs = runStartTs;
+    streamedAppliedCount = 0;
+
     // Add scroll listener for dynamic priority
     window.addEventListener('scroll', onScroll, { passive: true });
     const stopKeepAlive = startKeepAlive();
@@ -1118,6 +1151,7 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
 
     try {
         const textItems = extractTextNodes();
+        perfMark('c.scan', performance.now() - runStartTs, { n: textItems.length });
 
         if (textItems.length === 0) {
             completeWidget('No translatable text found', true);
@@ -1136,6 +1170,11 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
         let cacheActive = false; // Whether the cache was on for this run
         const totalItems = textItems.length;
         const batchSize = 8; // Process in batches
+        // The first batch is deliberately tiny: it carries the highest-priority
+        // (on-screen) text, and finishing it early is what puts the first
+        // translations on the page. Later batches run at full size.
+        const FIRST_BATCH_SIZE = 3;
+        let isFirstBatch = true;
         const failedItems = []; // Track items that failed for potential retry
         let inFlightBatches = []; // Track in-flight batch promises
 
@@ -1150,8 +1189,11 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
         while ((pendingTranslationQueue.length > 0 || inFlightBatches.length > 0) && !translationCancelled) {
             // Fill up to maxConcurrentRequests parallel batches
             while (inFlightBatches.length < maxConcurrentRequests && pendingTranslationQueue.length > 0) {
-                const batch = pendingTranslationQueue.splice(0, batchSize);
+                const size = isFirstBatch ? Math.min(batchSize, FIRST_BATCH_SIZE) : batchSize;
+                const batch = pendingTranslationQueue.splice(0, size);
+                isFirstBatch = false;
                 totalProcessed += batch.length;
+                perfMark('c.batch.dispatch', performance.now() - runStartTs, { n: batch.length, queued: pendingTranslationQueue.length });
 
                 // Create a trackable batch object with unique ID
                 const batchId = Date.now() + Math.random();
@@ -1175,6 +1217,9 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
                 inFlightBatches = inFlightBatches.filter(b => b.batchId !== completed.batchId);
 
                 if (completed.success) {
+                    if (totalApplied === 0 && completed.result.applied > 0) {
+                        perfMark('c.first_apply', performance.now() - runStartTs, { n: completed.result.applied });
+                    }
                     totalApplied += completed.result.applied;
                     totalFromCache += completed.result.fromCache || 0;
                     if (completed.result.cacheActive) cacheActive = true;
@@ -1201,6 +1246,8 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
             hasTranslationCache = true;
             isShowingTranslations = true;
         }
+
+        perfMark('c.total', performance.now() - runStartTs, { n: totalItems, applied: totalApplied });
 
         if (!translationCancelled) {
             if (failedItems.length > 0) {
@@ -1358,6 +1405,8 @@ async function translateSelection(targetLanguage, sourceLanguage = 'auto') {
     currentTargetLanguage = targetLanguage;
     translationInProgress = true;
     translationCancelled = false;
+    perfRunStartTs = performance.now();
+    streamedAppliedCount = 0;
     const stopKeepAlive = startKeepAlive();
     let stopModelWatch = null;
     startProgressWidget({ message: 'Extracting selected text...' });
@@ -1476,16 +1525,24 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
 
         case 'PARTIAL_TRANSLATION':
-            console.log(`[Translator] PARTIAL_TRANSLATION with ${message.translations?.length} items`);
+            // Streaming apply: the background forwards each item as soon as its
+            // single-item translation finishes, so text lands on the page
+            // continuously instead of one full batch at a time.
             let applied = 0;
             for (const t of message.translations) {
                 if (!t.error && t.text) {
                     if (replaceTextNode(t.id, t.text)) {
                         applied++;
+                        if (streamedAppliedCount === 0 && perfRunStartTs) {
+                            perfMark('c.first_partial', performance.now() - perfRunStartTs, { n: 1 });
+                        }
+                        streamedAppliedCount++;
                     }
                 }
             }
-            console.log(`[Translator] Applied ${applied} partial translations`);
+            if (applied > 0) {
+                debugLog(`[Translator] Applied ${applied} partial translations`);
+            }
             sendResponse({ applied: true });
             break;
 

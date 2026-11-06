@@ -57,6 +57,20 @@ let debugEnabled = false;
 function debugLog(...args) { if (debugEnabled) console.log(...args); }
 function debugWarn(...args) { if (debugEnabled) console.warn(...args); }
 
+// Perf tracing collector — mirrors the content-script helper (content.js). The
+// service worker also gets debugLog-gated console output; the entries land in
+// globalThis.__perfTrace for programmatic collection. Background-side marks:
+// cache/glossary resolution, per-batch LLM request, response parse, and the
+// translate() total.
+function perfMark(label, ms, extra) {
+    const rounded = Math.round(ms * 10) / 10;
+    try {
+        (globalThis.__perfTrace = globalThis.__perfTrace || []).push(
+            Object.assign({ label, ms: rounded }, extra || {}));
+    } catch (e) { /* collector unavailable - console only */ }
+    debugLog(`[Perf] ${label}${extra && extra.n !== undefined ? ` (n=${extra.n})` : ''}: ${rounded}ms`);
+}
+
 const PROMPT_TEMPLATES = {
     default: {
         system: `You are a professional translator. Translate the given texts to {{targetLanguage}}. 
@@ -91,6 +105,12 @@ let modelsCacheTime = 0;
 const MODEL_CACHE_TTL = 60000; // 60 seconds
 
 let cachedSettings = null;
+
+// PLaMo's per-item path is batched by joining segments with newlines. Kept in
+// line with the page-side batch size, and capped by characters so one very long
+// stretch of text can't overflow the model's context or dilute alignment.
+const PLAMO_BATCH_MAX_ITEMS = 8;
+const PLAMO_BATCH_MAX_CHARS = 1200;
 
 // ============================================================================
 // Settings Management
@@ -1050,7 +1070,8 @@ function hashString(str) {
     return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
 }
 
-async function translate(textItems, targetLanguage, settings) {
+async function translate(textItems, targetLanguage, settings, onPartial = null) {
+    const translateStartTs = performance.now();
     const modelId = settings.selectedModel;
     if (!modelId) throw new Error('No model selected');
 
@@ -1111,11 +1132,15 @@ async function translate(textItems, targetLanguage, settings) {
             const glossaryBlock = await buildGlossaryBlock(settings, mappedItems.map(m => m.text).join('\n'), targetLanguage);
             if (glossaryBlock) userPrompt = `${glossaryBlock}\n\n${userPrompt}`;
         }
+        const llmStartTs = performance.now();
         const { content: raw, finishReason } = await callProvider(provider, settings, modelId, systemPrompt, userPrompt, wantJson);
+        perfMark('bg.llm', performance.now() - llmStartTs, { n: items.length });
         debugLog(`[Background] Raw LLM response (first 300 chars):`, (raw || '').substring(0, 300));
 
         // Parse using the mapped items so it expects 0, 1, 2...
+        const parseStartTs = performance.now();
         const parsed = parseTranslationResponse(raw, mappedItems, finishReason);
+        perfMark('bg.parse', performance.now() - parseStartTs, { n: items.length });
         const good = new Map();
         for (const t of parsed) {
             if (t && t.text && !t.error && !isSuspiciousTranslation(t.text)) {
@@ -1219,6 +1244,7 @@ async function translate(textItems, targetLanguage, settings) {
         missGroups = unresolvedGroups;
     }
     debugLog(`[Background] cache: ${cacheHitCount} hit / ${missGroups.length} miss (${groups.size} unique of ${textItems.length} total)`);
+    perfMark('bg.cache', performance.now() - translateStartTs, { n: textItems.length });
 
     let pending = missGroups.map(g => g.item);   // representative item per unresolved group
 
@@ -1255,9 +1281,71 @@ async function translate(textItems, targetLanguage, settings) {
         }
     }
 
+    // PLaMo is a plain-text model whose per-item path is its main path, so one
+    // request per segment dominates page time. It translates a newline-separated
+    // block in place (same order, one line per input line), so group segments
+    // into a single request instead. A reply whose line count doesn't match is
+    // discarded and those items fall through to the per-item loop below, so a
+    // misaligned answer can never land on the wrong element.
+    if (plamoMode && pending.length > 1 && settings.plainTextFallback !== false) {
+        const leftover = [];
+        const batchable = [];
+        for (const item of pending) {
+            // An item containing its own newline would break the 1 line = 1 item
+            // mapping; keep those on the exact per-item path.
+            (String(item.text).includes('\n') ? leftover : batchable).push(item);
+        }
+        const chunks = [];
+        let chunk = [];
+        let chunkChars = 0;
+        for (const item of batchable) {
+            const len = String(item.text).length;
+            if (chunk.length > 0 && (chunk.length >= PLAMO_BATCH_MAX_ITEMS || chunkChars + len > PLAMO_BATCH_MAX_CHARS)) {
+                chunks.push(chunk);
+                chunk = [];
+                chunkChars = 0;
+            }
+            chunk.push(item);
+            chunkChars += len;
+        }
+        if (chunk.length) chunks.push(chunk);
+
+        for (const group of chunks) {
+            const batchStartTs = performance.now();
+            try {
+                const text = await translatePlamoItem(provider, settings, modelId,
+                    group.map(i => i.text).join('\n'), targetLanguage);
+                const lines = text.split('\n').map(l => l.trim());
+                if (lines.length !== group.length) {
+                    debugWarn(`[Background] PLaMo batch returned ${lines.length} line(s) for ${group.length} item(s) - falling back to per-item`);
+                    leftover.push(...group);
+                    continue;
+                }
+                perfMark('bg.plamo_batch', performance.now() - batchStartTs, { n: group.length });
+                group.forEach((item, index) => {
+                    const translated = lines[index];
+                    if (!translated || isSuspiciousTranslation(translated)) {
+                        leftover.push(item);
+                        return;
+                    }
+                    results.set(item.id, translated);
+                    if (onPartial) {
+                        try { onPartial({ id: item.id, text: translated }); } catch (e) { /* streaming is best-effort */ }
+                    }
+                });
+            } catch (e) {
+                debugWarn(`[Background] PLaMo batch failed (${e.message}) - falling back to per-item`);
+                leftover.push(...group);
+            }
+        }
+        pending = leftover;
+    }
+
     // Per-item fallback: translate the still-failing items one at a time, with no
     // batch structure to parse. Plain-text formats need this too — they carry the
     // same [id]: markers in a batched prompt, and a dropped segment shifts the rest.
+    // Each finished item is streamed to the tab immediately (onPartial) instead of
+    // waiting for the whole batch.
     if (pending.length > 0 && settings.plainTextFallback !== false) {
         debugWarn(`[Background] Falling back to per-item translation for ${pending.length} item(s)`);
         for (const item of pending) {
@@ -1265,7 +1353,12 @@ async function translate(textItems, targetLanguage, settings) {
                 const text = isPlainText
                     ? await requestOne(item.text)
                     : await translatePlainItem(provider, settings, modelId, item.text, baseVars);
-                if (text && !isSuspiciousTranslation(text)) results.set(item.id, text);
+                if (text && !isSuspiciousTranslation(text)) {
+                    results.set(item.id, text);
+                    if (onPartial) {
+                        try { onPartial({ id: item.id, text }); } catch (e) { /* streaming is best-effort */ }
+                    }
+                }
             } catch (e) {
                 debugWarn(`[Background] per-item fallback failed for id ${item.id}:`, e.message);
             }
@@ -1294,6 +1387,7 @@ async function translate(textItems, targetLanguage, settings) {
 
     // Build the final array in original order. Items that never succeeded are
     // returned with an error so the content script keeps their original text.
+    perfMark('bg.translate', performance.now() - translateStartTs, { n: textItems.length });
     const translations = textItems.map(item => results.has(item.id)
         ? { id: item.id, text: results.get(item.id) }
         : { id: item.id, error: 'translation failed' });
@@ -1303,6 +1397,21 @@ async function translate(textItems, targetLanguage, settings) {
 // ============================================================================
 // Message Handler
 // ============================================================================
+
+// Build a callback that streams per-item results to the requesting tab as they
+// finish. Plain-text formats (PLaMo, TranslateGemma, ...) translate item by
+// item, so each translation can land on the page long before the batch's
+// final response arrives. Callers without a sender tab get no stream.
+function makePartialReporter(sender) {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (typeof tabId !== 'number') return null;
+    return (partial) => {
+        try {
+            browserAPI.tabs.sendMessage(tabId, { type: 'PARTIAL_TRANSLATION', translations: [partial] })
+                .catch(() => { /* tab closed or unloaded mid-run */ });
+        } catch (e) { /* never let streaming break translation */ }
+    };
+}
 
 browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // console.log('[Background] Received message:', message.type);
@@ -1412,7 +1521,8 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     const result = await translate(
                         message.texts,
                         message.targetLanguage,
-                        settingsWithSource
+                        settingsWithSource,
+                        makePartialReporter(sender)
                     );
                     sendResponse({
                         translations: result.translations,
