@@ -1,26 +1,26 @@
-/* Options Page Styles for Local LLM Translator (Everforest Dark Theme) */
+/* Options Page Styles for Local LLM Translator (Rich Black & Gold Theme) */
 
 :root {
-    /* Everforest Dark Medium Contrast */
-    --bg-dim:  #1E2326;
-    --bg0:     #272E33;
-    --bg1:     #2E383C;
-    --bg2:     #374145;
-    --bg3:     #414B50;
-    --bg4:     #495156;
-    --bg5:     #4F5B58;
+    /* Rich Black surfaces (warm undertone, layered) */
+    --bg-dim:  #0A0A0C;
+    --bg0:     #101014;
+    --bg1:     #16161B;
+    --bg2:     #1D1D24;
+    --bg3:     #26262E;
+    --bg4:     #31313A;
+    --bg5:     #3C3C46;
 
-    --fg:      #D3C6AA;
-    --red:     #E67E80;
-    --orange:  #E69875;
-    --yellow:  #DBBC7F;
-    --green:   #A7C080;
-    --aqua:    #83C092;
-    --blue:    #7FBBB3;
-    --purple:  #D699B6;
-    --grey0:   #7A8478;
-    --grey1:   #859289;
-    --grey2:   #9DA9A0;
+    --fg:      #EDE9DF;
+    --red:     #E0685E;
+    --orange:  #D98E4A;
+    --yellow:  #E3B341;
+    --green:   #8FBF7F;
+    --aqua:    #6FB5A8;
+    --blue:    #6FA8C9;
+    --purple:  #C58FBE;
+    --grey0:   #6C6A62;
+    --grey1:   #8B887E;
+    --grey2:   #ABA79B;
 
     /* Semantic */
     --bg-primary:   var(--bg-dim);
@@ -30,9 +30,9 @@
     --text-primary:   var(--fg);
     --text-secondary: var(--grey1);
     --text-muted:     var(--grey0);
-    --accent:       var(--green);
-    --accent-hover: var(--aqua);
-    --accent-glow:  rgba(167, 192, 128, 0.2);
+    --accent:       #C9A227;
+    --accent-hover: #E0BC4C;
+    --accent-glow:  rgba(201, 162, 39, 0.22);
     --danger:       var(--red);
     --warning:      var(--yellow);
     --border:       var(--bg-tertiary);
@@ -150,7 +150,7 @@ body {
 
 .nav-link.active {
     color: var(--accent);
-    background: rgba(167, 192, 128, 0.1);
+    background: rgba(201, 162, 39, 0.1);
     border-left-color: var(--accent);
 }
 
@@ -195,7 +195,7 @@ body {
 
 .ui-lang-btn.active {
     color: var(--accent);
-    background: rgba(167, 192, 128, 0.12);
+    background: rgba(201, 162, 39, 0.12);
 }
 
 .privacy-note {
@@ -689,7 +689,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 input:checked + .slider {
-    background: rgba(167, 192, 128, 0.25);
+    background: rgba(201, 162, 39, 0.25);
 }
 
 input:checked + .slider::before {
@@ -1147,7 +1147,7 @@ button, .secondary-btn {
 .primary-btn:hover {
     background: var(--accent-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(167, 192, 128, 0.25);
+    box-shadow: 0 4px 12px rgba(201, 162, 39, 0.25);
 }
 
 .secondary-btn {

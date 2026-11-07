@@ -91,14 +91,10 @@ const els = {
 // Theme Management
 // ============================================================================
 
-function getSystemTheme() {
-    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-}
-
 function getCurrentTheme() {
     const stored = localStorage.getItem('translator-theme');
     if (stored) return stored;
-    return getSystemTheme();
+    return 'dark'; // rich black is the default look
 }
 
 function applyTheme(theme) {
