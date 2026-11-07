@@ -149,4 +149,6 @@ To view logs, go to `about:debugging#/runtime/this-firefox`, find **Local LLM Tr
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+This project is based on [Eldoprano/offline-browser-translate](https://github.com/Eldoprano/offline-browser-translate).
