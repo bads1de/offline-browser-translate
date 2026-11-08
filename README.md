@@ -43,6 +43,8 @@ With a translation-capable model loaded (e.g. `TranslateGemma`, `tencent.hunyuan
 3. Click **Load unpacked**
 4. Select the extension folder
 
+> **No build needed.** The built-in WebGPU module in `offscreen/` is committed as a prebuilt bundle (`offscreen/offscreen.bundle.js`), so a plain `git clone` / branch ZIP loads and runs as-is — no Node.js, npm, bundler, or Docker required. (You only need `npm ci && npm run build` in `offscreen/` if you modify the module's source yourself.)
+
 **Coming Soon:** Extension in Chrome Web Store
 
 ## Preview
