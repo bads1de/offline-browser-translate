@@ -1395,6 +1395,101 @@ async function translate(textItems, targetLanguage, settings, onPartial = null) 
 }
 
 // ============================================================================
+// Built-in WebGPU engine — offscreen document lifecycle.
+// The actual inference lives in the offscreen document (see offscreen/). The
+// service worker only creates/closes the document and forwards messages.
+// Phase 3 will route translate() through here when provider === 'builtin-webgpu'.
+// ============================================================================
+
+const BUILTIN_OFFSCREEN_PATH = 'offscreen/offscreen.html';
+const BUILTIN_IDLE_ALARM = 'builtin-webgpu-idle-watchdog';
+const BUILTIN_IDLE_MS = 5 * 60 * 1000;
+const BUILTIN_LOAD_TIMEOUT_MS = 15 * 60 * 1000; // slow networks get 15 minutes for the ~546MB download
+const BUILTIN_CALL_TIMEOUT_MS = 90 * 1000;      // ordinary inference round-trip
+
+// Latest progress report from the offscreen document (memory only; the popup
+// polls BUILTIN_MODEL_STATUS for a snapshot).
+let builtinLastProgress = null;
+
+async function builtinOffscreenExists() {
+    try {
+        if (!browserAPI.runtime.getContexts) return false;
+        const contexts = await browserAPI.runtime.getContexts({
+            contextTypes: ['OFFSCREEN_DOCUMENT'],
+            documentUrls: [browserAPI.runtime.getURL(BUILTIN_OFFSCREEN_PATH)],
+        });
+        return Array.isArray(contexts) && contexts.length > 0;
+    } catch (e) {
+        debugWarn('[Background] builtinOffscreenExists failed:', e && e.message);
+        return false;
+    }
+}
+
+let builtinCreating = null;
+
+async function ensureBuiltinOffscreen() {
+    if (await builtinOffscreenExists()) return;
+    // chrome.offscreen allows only one offscreen document; serialize creators.
+    if (builtinCreating) { await builtinCreating; return; }
+    builtinCreating = (async () => {
+        await browserAPI.offscreen.createDocument({
+            url: BUILTIN_OFFSCREEN_PATH,
+            reasons: ['WORKERS'],
+            justification: 'Run the built-in WebGPU translation model (hachiue) to translate page text without leaving the machine.',
+        });
+    })();
+    try {
+        await builtinCreating;
+    } finally {
+        builtinCreating = null;
+    }
+}
+
+async function closeBuiltinOffscreen() {
+    try {
+        await browserAPI.offscreen.closeDocument();
+        debugLog('[Background] offscreen document closed');
+    } catch (e) {
+        debugWarn('[Background] closeDocument failed (may already be closed):', e && e.message);
+    }
+}
+
+function builtinTimeout(ms, message) {
+    return new Promise((_, reject) => setTimeout(() => reject(new Error(message || `Timed out after ${ms}ms`)), ms));
+}
+
+async function builtinOffscreenCall(message, { timeoutMs = BUILTIN_CALL_TIMEOUT_MS } = {}) {
+    if (!browserAPI.offscreen) {
+        throw new Error('BUILTIN_UNAVAILABLE: this browser does not support offscreen documents');
+    }
+    await ensureBuiltinOffscreen();
+    const response = await Promise.race([
+        browserAPI.runtime.sendMessage({ ...message, target: 'offscreen' }),
+        builtinTimeout(timeoutMs, `offscreen did not answer ${message.type} within ${Math.round(timeoutMs / 1000)}s`),
+    ]);
+    if (!response) throw new Error('offscreen returned an empty response (document may have crashed)');
+    if (response.ok === false) throw new Error(response.error || `offscreen error in ${message.type}`);
+    return response;
+}
+
+// Single inference round-trip on the built-in engine. Used by the actual
+// translate path (Phase 3) and by BUILTIN_SELFTEST below.
+async function builtinWebGPUTranslate(message) {
+    return builtinOffscreenCall(
+        { type: 'OFFSCREEN_TRANSLATE', ...message },
+        { timeoutMs: BUILTIN_LOAD_TIMEOUT_MS },
+    );
+}
+
+// Run a trivial translation end-to-end to prove the whole path works. Kept
+// as a first-class message so support/diagnostics can exercise it.
+async function builtinSelfTest() {
+    const probe = 'The meeting has been rescheduled for next Monday.';
+    const response = await builtinWebGPUTranslate({ text: probe, targetLang: 'ja' });
+    return { probe, translation: response.translation, stats: response.stats };
+}
+
+// ============================================================================
 // Message Handler
 // ============================================================================
 
@@ -1532,6 +1627,136 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     });
                     break;
 
+                case 'OFFSCREEN_PROGRESS': {
+                    // Emitted by the offscreen document itself as the model downloads.
+                    builtinLastProgress = {
+                        phase: message.phase || 'weights',
+                        loadedBytes: Number(message.loadedBytes) || 0,
+                        totalBytes: Number(message.totalBytes) || 0,
+                        cached: !!message.cached,
+                        updatedAt: Date.now()
+                    };
+                    sendResponse({ ok: true });
+                    break;
+                }
+
+                case 'BUILTIN_IDLE_UNLOAD':
+                    // Offscreen disposed its engine after the 5-minute idle timer
+                    // fired; shut the whole document down so VRAM/RSS returns to 0.
+                    await closeBuiltinOffscreen();
+                    sendResponse({ ok: true });
+                    break;
+
+                case 'BUILTIN_MODEL_STATUS': {
+                    const exists = await builtinOffscreenExists();
+                    if (!exists) {
+                        sendResponse({ ok: true, status: { state: 'unloaded', exists: false, progress: builtinLastProgress } });
+                        break;
+                    }
+                    try {
+                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_STATUS' }, { timeoutMs: 8000 });
+                        sendResponse({ ok: true, status: { ...resp.status, exists: true, progress: builtinLastProgress } });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message, status: { state: 'error', exists: true, progress: builtinLastProgress } });
+                    }
+                    break;
+                }
+
+                case 'BUILTIN_MODEL_PROGRESS': {
+                    const exists = await builtinOffscreenExists();
+                    let status = null;
+                    if (exists) {
+                        try {
+                            const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_STATUS' }, { timeoutMs: 5000 });
+                            status = resp.status;
+                        } catch (e) { /* best-effort */ }
+                    }
+                    sendResponse({
+                        ok: true,
+                        progress: builtinLastProgress,
+                        status: status || { state: 'unloaded', exists },
+                    });
+                    break;
+                }
+
+                case 'BUILTIN_MODEL_LOAD': {
+                    try {
+                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_LOAD_MODEL' }, { timeoutMs: BUILTIN_LOAD_TIMEOUT_MS });
+                        sendResponse({ ok: true, status: { ...resp.status, exists: true } });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+
+                case 'BUILTIN_MODEL_UNLOAD': {
+                    try {
+                        if (await builtinOffscreenExists()) {
+                            await builtinOffscreenCall({ type: 'OFFSCREEN_UNLOAD' }, { timeoutMs: 15000 });
+                        }
+                        await closeBuiltinOffscreen();
+                        builtinLastProgress = null;
+                        sendResponse({ ok: true });
+                    } catch (e) {
+                        // Best-effort: close the document anyway so the renderer is gone.
+                        await closeBuiltinOffscreen();
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+
+                case 'BUILTIN_MODEL_CACHE_INFO': {
+                    const exists = await builtinOffscreenExists();
+                    if (!exists) {
+                        // Don't spin up a renderer just to report "unknown".
+                        sendResponse({ ok: true, cache: { cached: null, sizeBytes: null }, exists: false });
+                        break;
+                    }
+                    try {
+                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_CACHE_INFO' }, { timeoutMs: 10000 });
+                        sendResponse({ ok: true, cache: resp.cache, exists: true });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+
+                case 'BUILTIN_MODEL_CLEAR_CACHE': {
+                    try {
+                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_CLEAR_CACHE' }, { timeoutMs: 60000 });
+                        sendResponse({ ok: true, status: resp.status });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+
+                case 'BUILTIN_SET_IDLE_TIMEOUT': {
+                    // Diagnostics hook: override the offscreen idle timer (default 5min).
+                    const ms = Number(message.ms);
+                    try {
+                        if (!(await builtinOffscreenExists())) {
+                            sendResponse({ ok: false, error: 'offscreen document is not open' });
+                            break;
+                        }
+                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_SET_IDLE_TIMEOUT', ms }, { timeoutMs: 5000 });
+                        sendResponse({ ok: true, idleTimeoutMs: resp.idleTimeoutMs });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+
+                case 'BUILTIN_SELFTEST': {
+                    try {
+                        const result = await builtinSelfTest();
+                        sendResponse({ ok: true, ...result });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+
                 case 'CLEAR_CACHE':
                     try {
                         await cacheClear();
@@ -1646,6 +1871,34 @@ browserAPI.runtime.onStartup.addListener(async () => {
         // Best-effort; a failed clear just leaves the previous session's cache.
     }
 });
+
+// ============================================================================
+// Built-in WebGPU idle watchdog
+// ============================================================================
+// Backstop for the offscreen document's own 5-minute idle timer: the document
+// disposes the engine itself and asks the SW to close it. Should that message
+// get lost, or the renderer hang, this alarm tears it down. It never closes a
+// document whose engine is busy or below the threshold.
+if (browserAPI.alarms) {
+    browserAPI.alarms.onAlarm.addListener(async (alarm) => {
+        if (!alarm || alarm.name !== BUILTIN_IDLE_ALARM) return;
+        try {
+            if (!(await builtinOffscreenExists())) return;
+            const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_STATUS' }, { timeoutMs: 8000 });
+            const status = resp && resp.status;
+            if (status && status.state === 'ready'
+                && typeof status.idleMs === 'number'
+                && status.idleMs >= BUILTIN_IDLE_MS) {
+                debugLog('[Background] watchdog: offscreen idle >=5min — closing document');
+                await closeBuiltinOffscreen();
+            }
+        } catch (e) {
+            debugWarn('[Background] idle watchdog failed:', e && e.message);
+        }
+    });
+    // Alarm creation is idempotent per name; safe to run on every SW start.
+    browserAPI.alarms.create(BUILTIN_IDLE_ALARM, { periodInMinutes: 1 });
+}
 
 // ============================================================================
 // Context Menu

@@ -1,0 +1,16 @@
+{
+  "name": "offline-browser-translate-builtin-webgpu",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Built-in WebGPU inference module for the Local LLM Translator extension (hachiue + PLaMo 3 Translate 0.8B)",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "hachiue": "0.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

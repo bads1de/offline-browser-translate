@@ -7,7 +7,9 @@
     "activeTab",
     "storage",
     "scripting",
-    "contextMenus"
+    "contextMenus",
+    "offscreen",
+    "alarms"
   ],
   "host_permissions": [
     "http://localhost/*"
