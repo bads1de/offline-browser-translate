@@ -622,6 +622,85 @@ input[type="range"]::-webkit-slider-thumb:hover {
 }
 
 /* ============================================================
+   Built-in model status box
+   ============================================================ */
+.builtin-status-box {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius, 10px);
+}
+
+.builtin-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 13px;
+}
+
+.builtin-status-label {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.builtin-state-value {
+    font-weight: 600;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.builtin-state-value.is-ready { color: var(--green, #9ece6a); }
+.builtin-state-value.is-loading { color: var(--accent); }
+.builtin-state-value.is-error { color: var(--danger); }
+
+.builtin-progress { display: flex; flex-direction: column; gap: 6px; }
+
+.progress-track {
+    height: 8px;
+    background: var(--bg-secondary);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+    border-radius: 999px;
+    transition: width 0.2s ease;
+}
+
+.builtin-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.builtin-error {
+    color: var(--danger);
+    font-size: 12px;
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.builtin-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.builtin-license { font-size: 11px; }
+.builtin-license a { color: var(--accent); }
+
+/* ============================================================
    Toggle switch cards
    ============================================================ */
 .toggles-grid {

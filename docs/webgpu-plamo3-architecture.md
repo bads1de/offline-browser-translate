@@ -166,9 +166,14 @@ offline-browser-translate/
 - **E2E PASS**（headless Chrome for Testing・拡張メッセージ経路）: SAVE_SETTINGS→SAVE_GLOSSARY→TRANSLATE 3項目バッチで「管理画面を開き…」（用語集適用）＋ JA→EN 単文を確認。
 - 残: Phase 4（ダウンロード進捗 UI、フォールバック文言、ライセンス表記の補強、`unlimitedStorage` 検討）。
 
-### Phase 4: UIの対応 & フォールバック
-- 初回ダウンロード時のプログレスバー表示、オフロード復帰時の「準備中（約1〜2秒）」トースト表示を Popup / Content に追加。
-- 設定画面で `builtin-webgpu` と外部サーバー（Ollama / LMStudio）を自由に切り替えられることを確認。
+### Phase 4: UIの対応 & フォールバック — 一部完了（2026-11-09）
+- 初回ダウンロードのプログレス表示を3か所に追加: **ページ側ウィジェット**（content.js の `BUILTIN_PROGRESS` 受信 → `updateProgressWidget`）、**ポップアップ**（Provider=builtin 時にモデル行+ミニプログレスバー）、**オプションの「内蔵モデル」セクション**（進捗バー/ダウンロード済み容量/状態/`Download model`/`Delete model` ボタン、ライセンス明記）。
+- SW は `OFFSCREEN_PROGRESS` を保持し、builtin 翻訳を開始したタブへ `BUILTIN_PROGRESS` を転送。**オフスクリーンへのステータス問い合わせは workChain の外で即時応答**（ダウンロード中のステータスポーリングが「error」を誤表示していたバグを修正）。
+- `BUILTIN_MODEL_CACHE_INFO` は SW から直接 OPFS を測定（hashUrl を移植）。オフスクリーン文書を起動しなくても容量・状態を正確に返せる。`BUILTIN_MODEL_DELETE` はエンジン dispose → OPFS の `.gguf.bin`/`.meta.json` 削除 → IndexedDB `hachiue-model-cache-v1` 削除 → オフスクリーン文書を閉じる。
+- 検証: E2E PASS。フィクスチャページの翻訳でウィジェットが「Preparing built-in model… 0%→100%」を表示し実際に日本語化されること、options/delete/再DL、popup 表示を確認。`state=error` を誤表示する直列化バグを検出・修正（STATUS/CACHE_INFO を workChain 外に）。
+- 残: ライセンス表記の外部公開可否の判断は未（公開予定なしの前提）、VRAM 解放の目視確認（Chrome タスクマネージャ）は未実施。
+
+
 
 ---
 

@@ -639,6 +639,83 @@ async function updateIgnoredSiteIndicator() {
     elements.ignoredSiteNote.hidden = !matchedNeverSite;
 }
 
+// Built-in model status line: shown only in built-in mode; polls the SW
+// while the popup is open (popup lifetime is short, so no concern for battery).
+const builtinEls = {
+    group: document.getElementById('builtinModelGroup'),
+    state: document.getElementById('builtinModelState'),
+    track: document.getElementById('builtinModelTrack'),
+    fill: document.getElementById('builtinModelFill'),
+    size: document.getElementById('builtinModelSize'),
+};
+
+function fmtBytesShort(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    const mb = n / 1048576;
+    if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+    return mb.toFixed(0) + ' MB';
+}
+
+let builtinPollTimer = null;
+
+function updateBuiltinModelLine(status, cache) {
+    if (!builtinEls.group || builtinEls.group.hidden) return;
+    const state = status?.state || 'unloaded';
+    const cached = cache ? cache.cached : null;
+    const sizeBytes = cache ? cache.sizeBytes : null;
+
+    if (state === 'loading') {
+        builtinEls.state.textContent = t('builtin.downloadingState');
+        const p = status?.progress;
+        const pct = p && p.totalBytes > 0 ? Math.min(99, Math.floor((p.loadedBytes / p.totalBytes) * 100)) : 0;
+        builtinEls.track.hidden = false;
+        builtinEls.fill.style.width = pct + '%';
+        builtinEls.size.textContent = p && p.totalBytes
+            ? `${fmtBytesShort(p.loadedBytes)} / ${fmtBytesShort(p.totalBytes)} (${pct}%)`
+            : '';
+        return;
+    }
+    builtinEls.track.hidden = true;
+    builtinEls.fill.style.width = '0%';
+    if (state === 'ready') {
+        builtinEls.state.textContent = t('builtin.readyState');
+        builtinEls.size.textContent = sizeBytes ? `${fmtBytesShort(sizeBytes)} · ${t('builtin.readyHint')}` : t('builtin.readyHint');
+    } else if (cached === true) {
+        builtinEls.state.textContent = t('builtin.cachedState');
+        builtinEls.size.textContent = sizeBytes ? `${fmtBytesShort(sizeBytes)} · ${t('builtin.firstTimeHint')}` : t('builtin.firstTimeHint');
+    } else if (cached === false) {
+        builtinEls.state.textContent = t('builtin.undownloadedState');
+        builtinEls.size.textContent = t('builtin.firstTimeHint');
+    } else {
+        builtinEls.state.textContent = '—';
+        builtinEls.size.textContent = '';
+    }
+}
+
+async function refreshBuiltinModelLine() {
+    if (!builtinEls.group || builtinEls.group.hidden) return;
+    try {
+        const [statusResp, cacheResp] = await Promise.all([
+            browserAPI.runtime.sendMessage({ type: 'BUILTIN_MODEL_STATUS' }).catch(() => null),
+            browserAPI.runtime.sendMessage({ type: 'BUILTIN_MODEL_CACHE_INFO' }).catch(() => null),
+        ]);
+        updateBuiltinModelLine(statusResp?.status ?? null, cacheResp?.cache ?? null);
+    } catch {
+        // leave last render in place
+    }
+}
+
+function startBuiltinPolling() {
+    stopBuiltinPolling();
+    if (builtinEls.group && !builtinEls.group.hidden) {
+        builtinPollTimer = setInterval(refreshBuiltinModelLine, 750);
+    }
+}
+
+function stopBuiltinPolling() {
+    if (builtinPollTimer) { clearInterval(builtinPollTimer); builtinPollTimer = null; }
+}
+
 // Built-in option only appears where the offscreen API can run. While it's
 // selected, the external-server URL rows are irrelevant and get hidden.
 function updateProviderVisibility() {
@@ -658,6 +735,9 @@ function updateProviderVisibility() {
         const group = input && input.closest ? input.closest('.form-group') : null;
         if (group) group.hidden = isBuiltin;
     }
+    // Built-in model status line lives in the form-group right above the provider row.
+    if (builtinEls.group) builtinEls.group.hidden = !isBuiltin;
+    if (isBuiltin) startBuiltinPolling(); else stopBuiltinPolling();
 }
 
 // Status dot / banner for built-in mode: no server probing involved.
@@ -683,6 +763,7 @@ function applySettingsToUI() {
     modelPicker.setPinned(currentSettings.pinnedModels || []);
     elements.providerSelect.value = currentSettings.provider;
     updateProviderVisibility();
+    refreshBuiltinModelLine();
     elements.ollamaUrl.value = currentSettings.ollamaUrl;
     elements.lmstudioUrl.value = currentSettings.lmstudioUrl;
     if (elements.cacheMode) elements.cacheMode.value = currentSettings.cacheMode || 'off';

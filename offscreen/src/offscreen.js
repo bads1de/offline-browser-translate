@@ -25,6 +25,9 @@ import { buildPlamo3Prompt, stripPlamoTags } from './plamo3-prompt.js';
 // OPFS chunk cache key stays valid across extension updates.
 const MODEL_URL = 'https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/0c4af2b003fdd94b6868aa955414c1c86ee96997/plamo-3-translate-0.8b-Q4_K_M.gguf';
 const MODEL_NAME = 'plamo-3-translate-0.8b-Q4_K_M.gguf';
+// Byte size of the pinned file (Hugging Face reports X-Linked-Size: 573125952).
+// Used for cache validation and progress display; pinned URL => fixed size.
+const MODEL_SIZE_BYTES = 573125952;
 
 const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 let IDLE_TIMEOUT_MS = DEFAULT_IDLE_TIMEOUT_MS;
@@ -119,8 +122,16 @@ async function ensureEngine() {
                 onProgress: sendProgress,
                 onDeviceLost: (info) => {
                     warn('WebGPU device lost:', info.reason, info.message);
-                    lastError = `WebGPU device lost (${info.reason})`;
-                    engineState = 'error';
+                    // Only treat post-load loss as fatal — during load, hachiue can
+                    // report a transient loss and still finish successfully. Killing
+                    // the state here would surface a bogus "error" while inference is
+                    // about to succeed. After ready, a lost device means the engine
+                    // is dead and must be re-created on next use.
+                    if (engineState === 'ready') {
+                        lastError = `WebGPU device lost (${info.reason})`;
+                        engineState = 'error';
+                        engine = null;
+                    }
                 },
             });
         } catch (e) {
@@ -153,6 +164,7 @@ function statusSnapshot() {
         webgpuAvailable: !!navigator.gpu,
         modelUrl: MODEL_URL,
         modelName: MODEL_NAME,
+        modelSizeBytes: MODEL_SIZE_BYTES,
     };
 }
 
@@ -161,11 +173,11 @@ async function opStatus() {
 }
 
 async function opCacheInfo() {
-    const [cached, size] = await Promise.all([
-        isModelCached(MODEL_URL).catch(() => false),
-        getCachedModelSize(MODEL_URL).catch(() => null),
-    ]);
-    return { cached, sizeBytes: size ?? null };
+    // hachiue's cache key is hashUrl(url); getCachedModelSize needs the expected
+    // total bytes to validate the cached file against <key>.meta.json.
+    const cached = await isModelCached(MODEL_URL, MODEL_SIZE_BYTES).catch(() => false);
+    const size = cached ? await getCachedModelSize(MODEL_URL, MODEL_SIZE_BYTES).catch(() => MODEL_SIZE_BYTES) : 0;
+    return { cached, sizeBytes: size || 0, modelSizeBytes: MODEL_SIZE_BYTES };
 }
 
 async function opLoadModel() {
@@ -213,7 +225,13 @@ async function opUnload() {
 }
 
 async function opClearCache() {
-    await clearModelCache(MODEL_URL);
+    // Free VRAM/GPU first so a cached-but-resident engine can't linger after
+    // the user deletes the model to reclaim disk space.
+    await disposeEngine();
+    // hachiue's clearModelCache() purges OPFS chunks + IndexedDB for ALL models
+    // — this extension only ships one, so that's exactly what we want.
+    await clearModelCache();
+    sendProgress({ phase: 'ready', loadedBytes: 0, totalBytes: 0, cached: false });
     return statusSnapshot();
 }
 
@@ -223,8 +241,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     log('recv', type);
     (async () => {
         switch (type) {
-            case 'OFFSCREEN_STATUS':       sendResponse({ ok: true, status: await enqueue(opStatus) }); return;
-            case 'OFFSCREEN_CACHE_INFO':   sendResponse({ ok: true, cache: await enqueue(opCacheInfo) }); return;
+            case 'OFFSCREEN_STATUS':       sendResponse({ ok: true, status: statusSnapshot() }); return;
+            case 'OFFSCREEN_CACHE_INFO':   sendResponse({ ok: true, cache: await opCacheInfo() }); return;
             case 'OFFSCREEN_LOAD_MODEL':   sendResponse({ ok: true, status: await enqueue(opLoadModel) }); return;
             case 'OFFSCREEN_TRANSLATE':    sendResponse({ ok: true, ...(await enqueue(() => opTranslate(message))) }); return;
             case 'OFFSCREEN_UNLOAD':       sendResponse({ ok: true, status: await enqueue(opUnload) }); return;

@@ -1481,6 +1481,91 @@ const BUILTIN_CALL_TIMEOUT_MS = 90 * 1000;      // ordinary inference round-trip
 // cache key stays distinct from external-server models.
 const BUILTIN_WEBGPU_MODEL_ID = 'plamo-3-translate-0.8b-Q4_K_M';
 
+// SW-side view of the model file. The byte size is fixed by the pinned commit.
+const BUILTIN_MODEL_URL = 'https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/0c4af2b003fdd94b6868aa955414c1c86ee96997/plamo-3-translate-0.8b-Q4_K_M.gguf';
+const BUILTIN_MODEL_SIZE = 573125952;
+const BUILTIN_IDB_NAME = 'hachiue-model-cache-v1';
+
+// hachiue hashes the URL with cyrb53 → hex (16 chars) and stores
+// <hash>.gguf.bin + <hash>.meta.json in OPFS. Reimplemented (Apache-2.0) so the
+// service worker can measure/delete the model without waking the offscreen
+// document — OPFS persists across offscreen document lifetimes.
+function hachiueCacheKey(url) {
+    let h1 = 0xdeadbeef ^ url.length;
+    let h2 = 0x41c6ce57 ^ url.length;
+    for (let i = 0; i < url.length; i++) {
+        const ch = url.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+}
+
+async function builtinOpfsMeasure() {
+    // Measure directly in the service worker when OPFS is available here;
+    // fall back to null (unknown) rather than waking the offscreen document.
+    try {
+        if (typeof navigator === 'undefined' || !navigator.storage || typeof navigator.storage.getDirectory !== 'function') {
+            return { supported: false, cached: null, sizeBytes: null };
+        }
+        const root = await navigator.storage.getDirectory();
+        const key = hachiueCacheKey(BUILTIN_MODEL_URL);
+        try {
+            const fh = await root.getFileHandle(`${key}.gguf.bin`);
+            const file = await fh.getFile();
+            return { supported: true, cached: true, sizeBytes: file.size };
+        } catch {
+            return { supported: true, cached: false, sizeBytes: 0 };
+        }
+    } catch {
+        return { supported: false, cached: null, sizeBytes: null };
+    }
+}
+
+// Deletes the cached model (OPFS chunks + IndexedDB fallback). If the
+// offscreen document is alive, its engine is unloaded first.
+async function builtinModelDelete() {
+    let unloaded = false;
+    if (await builtinOffscreenExists()) {
+        try {
+            await builtinOffscreenCall({ type: 'OFFSCREEN_UNLOAD' }, { timeoutMs: 15000 });
+            unloaded = true;
+        } catch (e) {
+            debugWarn('[Background] builtinModelDelete: unload failed (continuing):', e && e.message);
+        }
+    }
+    let opfsRemoved = [];
+    try {
+        if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function') {
+            const root = await navigator.storage.getDirectory();
+            const key = hachiueCacheKey(BUILTIN_MODEL_URL);
+            for (const name of [`${key}.gguf.bin`, `${key}.meta.json`]) {
+                try { await root.removeEntry(name); opfsRemoved.push(name); } catch { /* absent */ }
+            }
+        }
+    } catch (e) {
+        debugWarn('[Background] builtin OPFS delete failed:', e && e.message);
+    }
+    let idbDeleted = false;
+    try {
+        if (typeof indexedDB !== 'undefined') {
+            await new Promise((resolve) => {
+                try {
+                    const req = indexedDB.deleteDatabase(BUILTIN_IDB_NAME);
+                    req.onsuccess = () => { idbDeleted = true; resolve(); };
+                    req.onerror = () => resolve();
+                    req.onblocked = () => resolve();
+                } catch { resolve(); }
+            });
+        }
+    } catch (e) {
+        debugWarn('[Background] builtin IDB delete failed:', e && e.message);
+    }
+    return { ok: true, unloaded, opfsRemoved, idbDeleted };
+}
+
 function builtinWebgpuSupported() {
     // Firefox (and any engine without the offscreen API) cannot run the built-in mode.
     return typeof browserAPI.offscreen !== 'undefined' && !!browserAPI.offscreen;
@@ -1497,6 +1582,11 @@ function builtinModelEntry() {
 // Latest progress report from the offscreen document (memory only; the popup
 // polls BUILTIN_MODEL_STATUS for a snapshot).
 let builtinLastProgress = null;
+
+// Tab id of an in-flight built-in translation started by a content script, so
+// OFFSCREEN_PROGRESS can be forwarded to that tab for the page-side widget.
+// Set in the TRANSLATE case, cleared in its finally block.
+let builtinProgressTabId = null;
 
 async function builtinOffscreenExists() {
     try {
@@ -1700,12 +1790,22 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         };
                     }
 
-                    const result = await translate(
-                        message.texts,
-                        message.targetLanguage,
-                        settingsWithSource,
-                        makePartialReporter(sender)
-                    );
+                    // Route built-in model-download progress to the page that
+                    // asked for the translation (its widget shows the download).
+                    builtinProgressTabId = (settingsWithSource.provider === 'builtin-webgpu' && sender && sender.tab && typeof sender.tab.id === 'number')
+                        ? sender.tab.id
+                        : null;
+                    let result;
+                    try {
+                        result = await translate(
+                            message.texts,
+                            message.targetLanguage,
+                            settingsWithSource,
+                            makePartialReporter(sender)
+                        );
+                    } finally {
+                        builtinProgressTabId = null;
+                    }
                     sendResponse({
                         translations: result.translations,
                         fromCache: result.fromCache,
@@ -1723,6 +1823,21 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         cached: !!message.cached,
                         updatedAt: Date.now()
                     };
+                    // Forward to the tab that triggered the built-in translation so
+                    // its page-side widget can show model-download progress.
+                    if (typeof builtinProgressTabId === 'number' && browserAPI.tabs && browserAPI.tabs.sendMessage) {
+                        const total = builtinLastProgress.totalBytes;
+                        const loaded = builtinLastProgress.loadedBytes;
+                        const percent = total > 0 ? Math.min(99, Math.floor((loaded / total) * 100)) : 0;
+                        const payload = {
+                            type: 'BUILTIN_PROGRESS',
+                            percent,
+                            message: `Preparing built-in model… ${percent}%`,
+                        };
+                        try {
+                            browserAPI.tabs.sendMessage(builtinProgressTabId, payload).catch(() => { /* tab gone or uninjected */ });
+                        } catch (tabErr) { /* tab gone — fine */ }
+                    }
                     sendResponse({ ok: true });
                     break;
                 }
@@ -1793,15 +1908,34 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
 
                 case 'BUILTIN_MODEL_CACHE_INFO': {
+                    // Cheap, side-effect-free SW-side OPFS measure; no offscreen
+                    // document needed. Falls back to the offscreen document only if
+                    // OPFS isn't reachable from this service worker.
+                    const swMeasure = await builtinOpfsMeasure();
+                    if (swMeasure.supported) {
+                        sendResponse({ ok: true, cache: { ...swMeasure, modelSizeBytes: BUILTIN_MODEL_SIZE }, exists: await builtinOffscreenExists() });
+                        break;
+                    }
                     const exists = await builtinOffscreenExists();
                     if (!exists) {
-                        // Don't spin up a renderer just to report "unknown".
-                        sendResponse({ ok: true, cache: { cached: null, sizeBytes: null }, exists: false });
+                        sendResponse({ ok: true, cache: { cached: null, sizeBytes: null, modelSizeBytes: BUILTIN_MODEL_SIZE }, exists: false });
                         break;
                     }
                     try {
                         const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_CACHE_INFO' }, { timeoutMs: 10000 });
                         sendResponse({ ok: true, cache: resp.cache, exists: true });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+
+                case 'BUILTIN_MODEL_DELETE': {
+                    try {
+                        const result = await builtinModelDelete();
+                        builtinLastProgress = null;
+                        await closeBuiltinOffscreen();
+                        sendResponse({ ok: true, ...result, cache: await builtinOpfsMeasure() });
                     } catch (e) {
                         sendResponse({ ok: false, error: e.message });
                     }

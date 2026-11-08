@@ -72,7 +72,9 @@ The extension will:
 2. Set **Provider** to **Built-in (PLaMo 3 Translate 0.8B / WebGPU)** (Settings or popup)
 3. Click **Translate Page**
 
-First use downloads the model once (~546 MB, one time). After that, it is cached locally (OPFS) and loads in ~1–2 seconds. After 5 minutes without translating, the model is unloaded to free VRAM; the next translation reloads it from cache. The built-in model is the same PFN PLaMo 3 Translate weights distributed on Hugging Face — the model is not bundled in the extension. Usage of the model is governed by the PLaMo Community License: personal and academic use is free; commercial use requires prior registration with PFN (see `offscreen/MODEL-LICENSE.md`).
+First use downloads the model once (~546 MB, one time) — the page widget, the popup, and Options → **Built-in Model** all show download progress. After that, it is cached locally (OPFS) and loads in ~1–2 seconds. After 5 minutes without translating, the model is unloaded to free VRAM; the next translation reloads it from cache. The built-in model is the same PFN PLaMo 3 Translate weights distributed on Hugging Face — the model is not bundled in the extension. Usage of the model is governed by the PLaMo Community License: personal and academic use is free; commercial use requires prior registration with PFN (see `offscreen/MODEL-LICENSE.md`).
+
+The downloaded model can be removed any time from **Options → Built-in Model → Delete model** (frees ~546 MB; you can download it again later). The built-in section also shows the current download state, downloaded size, and the license terms.
 
 This mode is not available on Firefox (it needs the offscreen API) — Firefox defaults to the external-server modes.
 
