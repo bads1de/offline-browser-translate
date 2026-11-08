@@ -2,6 +2,8 @@
   <img src="assets/logo.png" width="48" valign="middle"> Local LLM Translator
 </h1>
 
+**🌐 [日本語版 README はこちら](README.ja.md)**
+
 A privacy-focused browser extension that translates web pages using local LLMs — either with a built-in PLaMo 3 Translate model running fully in your browser (WebGPU), or via Ollama / LMStudio. **Your data never leaves your machine.**
 
 [![Get the Add-on](https://extensionworkshop.com/assets/img/documentation/publish/get-the-addon-178x60px.dad84b42.png)](https://addons.mozilla.org/en-GB/firefox/addon/local-llm-translator/)
