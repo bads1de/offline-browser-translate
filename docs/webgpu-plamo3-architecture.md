@@ -159,9 +159,12 @@ offline-browser-translate/
 - Service Worker から Offscreen Document を動的に生成・メッセージ通信・破棄（5分タイマー）できることを確認。
 - Chromeタスクマネージャで、オフロード時にVRAM/メモリが確実に解放されることを検証。
 
-### Phase 3: Background Router への統合
-- `background.js` の `translate()` 処理において、`settings.provider === 'builtin-webgpu'` の場合に Offscreen Document 経由で推論するルートを接続。
-- 既存の用語集・キャッシュ・PLaMoバッチロジックがそのまま適用されることを確認。
+### Phase 3: Background Router への統合 — **完了（2026-11-08）**
+- `translate()` に `builtin-webgpu` プロバイダーを追加（`isBuiltin` でモデルを `plamo-3-translate-0.8b-Q4_K_M` に固定、provider auto-detect スキップ、offscreen API 非対応環境は明示エラー）。
+- PLaMo 改行バッチ経路（`plamoMode`）に内蔵エンジンを接続。用語集は `collectGlossaryMatches()` で一致語を `{source,target}` 化し、**PFML3 ネイティブ glossary**（index/item、小文字 form）で 0.8B に実際に効く形で注入（hachiue helper 不使用）。
+- options/popup の Provider 選択に「内蔵」を追加。Firefox 等の offscreen 非対応環境では選択肢自体を非表示（SW でも明示エラーにフォールバック）。builtin 選択時はサーバー URL 行を隠す。popup の provider 変更は即時保存＆モデルリスト再取得（従来の「変更が即反映されない」既存バグも併せて修正）。
+- **E2E PASS**（headless Chrome for Testing・拡張メッセージ経路）: SAVE_SETTINGS→SAVE_GLOSSARY→TRANSLATE 3項目バッチで「管理画面を開き…」（用語集適用）＋ JA→EN 単文を確認。
+- 残: Phase 4（ダウンロード進捗 UI、フォールバック文言、ライセンス表記の補強、`unlimitedStorage` 検討）。
 
 ### Phase 4: UIの対応 & フォールバック
 - 初回ダウンロード時のプログレスバー表示、オフロード復帰時の「準備中（約1〜2秒）」トースト表示を Popup / Content に追加。
@@ -217,8 +220,8 @@ offline-browser-translate/
 | 改行3行バッチ | ✅ **出力3行・順序アライメントOK**（0.84秒） |
 | JA長文→EN | ✅ 自然な英訳（1.9秒、57→55 tok） |
 | 2回目ロード | ✅ **1.3〜1.4秒**（OPFSチャンクキャッシュ）。`dispose()` も即時返り GPUDevice が破棄されることを確認 |
-| 用語集 | ⚠️ **PFML3 glossary 指定が反映されなかった**（`dashboard→管理画面` 指定で「ダッシュボードを開き…」が返却）。原因未特定（モデルの限界 or プロンプト構築の癖）。Phase 3 組み込み時に `translateText` の `glossary` を渡す経路とPFML3直接構築の両方を再検証すること |
-| form 指定 | ⚠️ `form=polite` でも「このシステムは便利だ。」（plain 相当）が返り、**polite/plain の区別が付かなかった**。Phase 3 で再検証（`translateText` の `form` 引数の実効性を確認） |
+| 用語集 | ❌→✅ **切り分け完了（2026-11-08）**: hachiue ヘルパー（`translateText`）が生成する PFML3 が公式フォーマットとずれていたことが原因と判明（glossary が `<|plamo:msg|>src\ttarget`、form が `<|plamo:val|>Polite`（大文字）。**モデルは無視する**）。**公式 PFML3 を手組み**（`<|plamo:index|>src<|plamo:item|>tgt` の繰り返し、小文字 `polite`/`plain`）で `engine.generate()` を直接呼ぶように拡張を改修したところ、glossary・form ともに正常動作を確認。拡張は translateText を経由しない設計に確定 |
+| form 指定 | ❌→✅ 上記と同一原因・同一解決。helper 経由は polite/plain を区別できなかったが、手組み PFML3（小文字値）なら `form=polite → 「このシステムは便利です。」／ form=plain → 「このシステムは便利だ。」` を正しく区別。E2E（拡張経由）で glossary 適用を確認済み |
 | キャッシュAPI | `isModelCached()` / `getCachedModelSize()` が `false` / `0.0 MB` を返すが、実際は OPFS からのロードが 1.3 秒で行われており、**エンジンの内部キャッシュは機能している**（レポート側の判定キーが異なる模様。実装では実測ベースで信頼する） |
 | 注意点 | 初回ロードは約60秒かかるので、UI で進捗を見せないと「固まった」と思われる。546MB を毎回落とさせないよう、オプションで「モデルの事前ダウンロード」ボタンを用意するのが親切 |
 

@@ -362,6 +362,26 @@ async function buildGlossaryBlock(settings, text, targetLanguage) {
     return `[Glossary] Use these exact translations for the listed terms. Keep them consistent and do not alter them:\n${lines.join('\n')}`;
 }
 
+// Glossary entries that match `text`, as [{source, target}, ...] — for the
+// built-in WebGPU engine, which takes them natively via PFML3 rather than an
+// instruction block (small dedicated models follow the native format far more
+// reliably). Returns null when the glossary is off/unmatched. Mirrors
+// buildGlossaryBlock's matching (whole-segment hits are handled by
+// getGlossaryExactIndex earlier in the pipeline).
+async function collectGlossaryMatches(settings, text, targetLanguage) {
+    if (settings.useGlossary === false) return null;
+    const entries = await loadGlossary();
+    if (!entries.length || !glossaryAppliesTo(targetLanguage)) return null;
+    if (!glossaryAutomaton) glossaryAutomaton = buildGlossaryAutomaton(entries);
+    const hits = scanGlossary(glossaryAutomaton, entries, text);
+    if (!hits.length) return null;
+    return hits.map(idx => {
+        const [src, rawTgt] = entries[idx];
+        const tgt = (rawTgt === undefined || rawTgt === '') ? src : rawTgt;
+        return { source: src, target: tgt };
+    });
+}
+
 // ============================================================================
 // Provider Detection & Model Listing
 // ============================================================================
@@ -501,6 +521,14 @@ async function listModels(settings, useCache = true) {
     // Return cached models if available and not expired
     if (useCache && cachedModels && (Date.now() - modelsCacheTime < MODEL_CACHE_TTL)) {
         return cachedModels;
+    }
+
+    // Built-in engine: exactly one model, no server probing
+    if (settings.provider === 'builtin-webgpu') {
+        const models = builtinModelEntry();
+        cachedModels = models;
+        modelsCacheTime = Date.now();
+        return models;
     }
 
     const models = [];
@@ -759,6 +787,12 @@ function parseTranslationResponse(response, originalItems, finishReason) {
 async function autoDetectAndSelectModel() {
     try {
         const settings = await getSettings();
+        if (settings.provider === 'builtin-webgpu') {
+            if (settings.selectedModel === BUILTIN_WEBGPU_MODEL_ID) return null;
+            await saveSettings({ selectedModel: BUILTIN_WEBGPU_MODEL_ID });
+            console.log('[Background] Auto-selected built-in WebGPU model');
+            return { id: BUILTIN_WEBGPU_MODEL_ID, provider: 'builtin-webgpu' };
+        }
         if (settings.selectedModel) return null; // already configured
 
         const models = await listModels(settings, false); // force fresh fetch
@@ -782,6 +816,9 @@ async function autoDetectAndSelectModel() {
 }
 
 async function detectModelProvider(modelId, settings) {
+    if (settings.provider === 'builtin-webgpu' || modelId === BUILTIN_WEBGPU_MODEL_ID) {
+        return 'builtin-webgpu';
+    }
     // Use cached models to avoid extra API calls
     const models = await listModels(settings, true);
     const model = models.find(m => m.id === modelId);
@@ -974,6 +1011,23 @@ async function callProvider(provider, settings, modelId, systemPrompt, userPromp
 // for both the OpenAI-compatible (llama.cpp / LM Studio) and Ollama paths.
 async function translatePlamoItem(provider, settings, modelId, text, targetLangCode) {
     const lang = (targetLangCode || 'ja').toLowerCase();
+    // Built-in WebGPU engine (hachiue) via the offscreen document. Uses the
+    // native PFML3 glossary path, so terminology hints actually stick on 0.8B.
+    if (provider === 'builtin-webgpu') {
+        let glossary;
+        try {
+            glossary = await collectGlossaryMatches(settings, text, targetLangCode) || undefined;
+        } catch (e) {
+            glossary = undefined;
+        }
+        const resp = await builtinWebGPUTranslate({
+            text,
+            targetLang: lang,
+            sourceLang: settings.sourceLanguage,
+            glossary,
+        });
+        return cleanTranslationText((resp.translation || '').trim());
+    }
     if (provider === 'ollama') {
         const body = {
             model: modelId,
@@ -1072,11 +1126,15 @@ function hashString(str) {
 
 async function translate(textItems, targetLanguage, settings, onPartial = null) {
     const translateStartTs = performance.now();
-    const modelId = settings.selectedModel;
+    const isBuiltin = settings.provider === 'builtin-webgpu';
+    const modelId = isBuiltin ? BUILTIN_WEBGPU_MODEL_ID : settings.selectedModel;
     if (!modelId) throw new Error('No model selected');
 
     // Detect provider if auto
     let provider = settings.provider;
+    if (provider === 'builtin-webgpu' && !builtinWebgpuSupported()) {
+        throw new Error('Built-in WebGPU mode is not supported in this browser (it needs Chrome/Edge with the offscreen API and WebGPU). Switch back to an external server in the options page.');
+    }
     if (provider === 'auto') {
         provider = await detectModelProvider(modelId, settings);
         if (!provider) throw new Error('Could not detect model provider');
@@ -1406,6 +1464,24 @@ const BUILTIN_IDLE_ALARM = 'builtin-webgpu-idle-watchdog';
 const BUILTIN_IDLE_MS = 5 * 60 * 1000;
 const BUILTIN_LOAD_TIMEOUT_MS = 15 * 60 * 1000; // slow networks get 15 minutes for the ~546MB download
 const BUILTIN_CALL_TIMEOUT_MS = 90 * 1000;      // ordinary inference round-trip
+
+// Virtual model id for the built-in engine. Contains "plamo" on purpose so the
+// request-format auto-detection resolves to the plain-text PLaMo path and the
+// cache key stays distinct from external-server models.
+const BUILTIN_WEBGPU_MODEL_ID = 'plamo-3-translate-0.8b-Q4_K_M';
+
+function builtinWebgpuSupported() {
+    // Firefox (and any engine without the offscreen API) cannot run the built-in mode.
+    return typeof browserAPI.offscreen !== 'undefined' && !!browserAPI.offscreen;
+}
+
+function builtinModelEntry() {
+    return [{
+        id: BUILTIN_WEBGPU_MODEL_ID,
+        name: 'PLaMo 3 Translate 0.8B (内蔵 / Built-in)',
+        provider: 'builtin-webgpu'
+    }];
+}
 
 // Latest progress report from the offscreen document (memory only; the popup
 // polls BUILTIN_MODEL_STATUS for a snapshot).

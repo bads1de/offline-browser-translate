@@ -870,6 +870,12 @@ textarea.highlight-vars {
   border: 1px solid rgba(214, 153, 182, 0.3);
 }
 
+.model-provider-badge--builtin-webgpu {
+  background: rgba(212, 175, 55, 0.14);
+  color: var(--gold, #d4af37);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+}
+
 /* Disabled model trigger (loading / error states) */
 .model-picker-trigger:disabled {
   opacity: 0.55;

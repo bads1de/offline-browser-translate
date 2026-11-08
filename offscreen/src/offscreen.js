@@ -15,7 +15,6 @@
  */
 import {
     HachiueEngine,
-    translateText,
     isModelCached,
     getCachedModelSize,
     clearModelCache,
@@ -173,25 +172,75 @@ async function opLoadModel() {
     return statusSnapshot();
 }
 
+// Strip PLaMo control tags from the model's output. The engine stops at
+// EOT/EOS, but tags may still trail the text on some paths.
+function stripPlamoTags(s) {
+    return (s || '').replace(/<\|plamo:[^>]*\|>/g, '').trim();
+}
+
+// Build a PFML3 prompt by hand. hachiue's `translateText` helper builds a
+// simplified dialect (<|plamo:msg|> + tab-separated glossary, capitalized
+// form values) that PLaMo 3 Translate ignores — the model card documents
+// <|plamo:index|>/<|plamo:item|> pairs and lowercase form values, and the
+// 0.8B model respects exactly that (verified 2026-11-08: helper = glossary/
+// form ignored; hand-built prompt = both honored). So we build PFML3 here.
+function buildPlamo3Prompt({ text, targetLang, sourceLang, form, glossary, context, history }) {
+    let prompt = '<|plamo:bos|><|plamo:tag|>dataset<|plamo:msg|>translation';
+    if (context && context.trim()) {
+        prompt += `<|plamo:tag|>context<|plamo:msg|>${context.trim()}`;
+    }
+    if (Array.isArray(glossary) && glossary.length) {
+        const valid = glossary.filter(g => g && String(g.source).trim() && String(g.target).trim());
+        if (valid.length) {
+            prompt += '<|plamo:tag|>glossary';
+            for (const g of valid) {
+                prompt += `<|plamo:index|>${String(g.source).trim()}<|plamo:item|>${String(g.target).trim()}`;
+            }
+        }
+    }
+    if (Array.isArray(history)) {
+        for (const h of history) {
+            if (!h || !String(h.source).trim() || !String(h.translation).trim()) continue;
+            const hs = h.sourceLang ? String(h.sourceLang).toLowerCase() : (sourceLang || '').toLowerCase();
+            const ht = h.targetLang ? String(h.targetLang).toLowerCase() : String(targetLang).toLowerCase();
+            prompt += '<|plamo:tag|>input';
+            if (hs) prompt += `<|plamo:key|>lang<|plamo:val|>${hs}`;
+            prompt += `<|plamo:msg|>${String(h.source).trim()}`;
+            prompt += `<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>${ht}<|plamo:msg|>${String(h.translation).trim()}`;
+        }
+    }
+    prompt += '<|plamo:tag|>input';
+    if (sourceLang && sourceLang !== 'auto') {
+        prompt += `<|plamo:key|>lang<|plamo:val|>${String(sourceLang).toLowerCase()}`;
+    }
+    prompt += `<|plamo:msg|>${text}`;
+    prompt += `<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>${String(targetLang).toLowerCase()}`;
+    if (form && (String(targetLang).toLowerCase().startsWith('ja'))) {
+        prompt += `<|plamo:key|>form<|plamo:val|>${form}`;
+    }
+    prompt += '<|plamo:msg|>';
+    return prompt;
+}
+
 async function opTranslate(message) {
     const e = await ensureEngine();
     stopIdleTimer();
     try {
         const text = String(message.text ?? '');
         if (!text.trim()) throw new Error('EMPTY_TEXT');
-        const opts = {
-            text,
-            targetLang: message.targetLang,
-            sourceLang: message.sourceLang && message.sourceLang !== 'auto' ? message.sourceLang : undefined,
-            form: message.form === 'polite' || message.form === 'plain' ? message.form : undefined,
-            glossary: Array.isArray(message.glossary) ? message.glossary : undefined,
-            context: typeof message.context === 'string' ? message.context : undefined,
-        };
+        const targetLang = String(message.targetLang || 'ja').toLowerCase();
+        const sourceLang = typeof message.sourceLang === 'string' ? message.sourceLang : undefined;
+        const glossary = Array.isArray(message.glossary) ? message.glossary : undefined;
+        const form = (message.form === 'polite' || message.form === 'plain') ? message.form : undefined;
+        const context = typeof message.context === 'string' ? message.context : undefined;
+        const history = Array.isArray(message.history) ? message.history : undefined;
+        const prompt = buildPlamo3Prompt({ text, targetLang, sourceLang, form, glossary, context, history });
         const t0 = performance.now();
-        const res = await translateText(e, opts);
+        const res = await e.generate(prompt, { maxNewTokens: 512, temperature: 0 });
         touchActivity();
+        const translation = stripPlamoTags(res.text);
         return {
-            translation: res.translation,
+            translation,
             stats: {
                 promptTokens: res.stats.promptTokens,
                 generatedTokens: res.stats.generatedTokens,

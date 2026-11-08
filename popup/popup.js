@@ -639,12 +639,50 @@ async function updateIgnoredSiteIndicator() {
     elements.ignoredSiteNote.hidden = !matchedNeverSite;
 }
 
+// Built-in option only appears where the offscreen API can run. While it's
+// selected, the external-server URL rows are irrelevant and get hidden.
+function updateProviderVisibility() {
+    if (!elements.providerSelect) return;
+    const supported = typeof browserAPI.offscreen !== 'undefined';
+    const builtinOption = elements.providerSelect.querySelector('option[value="builtin-webgpu"]');
+    if (builtinOption) {
+        builtinOption.hidden = !supported;
+        // Defensive: a stored `builtin-webgpu` from a synced browser profile
+        // can't be honored here, fall the dropdown back to auto-detect.
+        if (!supported && elements.providerSelect.value === 'builtin-webgpu') {
+            elements.providerSelect.value = 'auto';
+        }
+    }
+    const isBuiltin = elements.providerSelect.value === 'builtin-webgpu';
+    for (const input of [elements.ollamaUrl, elements.lmstudioUrl]) {
+        const group = input && input.closest ? input.closest('.form-group') : null;
+        if (group) group.hidden = isBuiltin;
+    }
+}
+
+// Status dot / banner for built-in mode: no server probing involved.
+function updateBuiltinProviderStatusUI() {
+    const statusWrapper = elements.providerStatus;
+    const statusDot = statusWrapper.querySelector('.status-dot');
+    const ok = typeof browserAPI.offscreen !== 'undefined';
+    providersAvailable = ok;
+    providersBlocked = false;
+    statusDot.className = ok ? 'status-dot connected' : 'status-dot error';
+    statusWrapper.title = ok
+        ? 'Built-in WebGPU engine (PLaMo 3 Translate 0.8B, downloaded on first use)'
+        : 'Built-in mode needs Chrome/Edge with the offscreen API';
+    if (ok) hideSetupBanner();
+    else showSetupBanner();
+    if (!isTranslating) elements.translateBtn.disabled = !providersAvailable;
+}
+
 // Apply settings to UI
 function applySettingsToUI() {
     langPicker.setPinned(currentSettings.pinnedLanguages || []);
     langPicker.setValue(currentSettings.targetLanguage);
     modelPicker.setPinned(currentSettings.pinnedModels || []);
     elements.providerSelect.value = currentSettings.provider;
+    updateProviderVisibility();
     elements.ollamaUrl.value = currentSettings.ollamaUrl;
     elements.lmstudioUrl.value = currentSettings.lmstudioUrl;
     if (elements.cacheMode) elements.cacheMode.value = currentSettings.cacheMode || 'off';
@@ -684,13 +722,17 @@ async function checkProviders() {
 // on model selection, so picking a model whose provider is unreachable or
 // CORS-blocked updates the UI without another probe.
 function updateProviderStatusUI() {
+    const providerSetting = currentSettings.provider;
+    if (providerSetting === 'builtin-webgpu') {
+        updateBuiltinProviderStatusUI();
+        return;
+    }
     if (!lastProviderDetect) return;
     const response = lastProviderDetect;
     const statusWrapper = elements.providerStatus;
     const statusDot = statusWrapper.querySelector('.status-dot');
 
     // Resolve active provider using setting or currently selected model's provider
-    const providerSetting = currentSettings.provider; // 'auto', 'ollama', 'lmstudio'
     const selectedModelProvider = modelPicker.getSelectedProvider();
 
     let activeProvider = providerSetting;
@@ -1040,6 +1082,17 @@ function setupEventListeners() {
         await checkProviders();
         await loadModels(true); // Force refresh, bypass cache
     });
+
+    // Provider selection changes apply immediately (the dropdown previously
+    // only took effect as a side effect of unrelated saves).
+    if (elements.providerSelect) {
+        elements.providerSelect.addEventListener('change', async () => {
+            await saveCurrentSettings();
+            updateProviderVisibility();
+            updateProviderStatusUI();
+            loadModels(true); // refresh the model list for the new provider
+        });
+    }
 
     // Toggle advanced settings
     elements.toggleAdvanced.addEventListener('click', () => {

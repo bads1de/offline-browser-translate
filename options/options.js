@@ -621,11 +621,18 @@ const providerPicker = createSimpleSelect({
         menu: elements.providerMenu,
         list: elements.providerList,
     },
-    getOptions: () => [
-        { value: 'auto', label: t('provider.auto') },
-        { value: 'ollama', label: t('provider.ollama') },
-        { value: 'lmstudio', label: t('provider.lmstudio') },
-    ],
+    getOptions: () => {
+        const opts = [
+            { value: 'auto', label: t('provider.auto') },
+            { value: 'ollama', label: t('provider.ollama') },
+            { value: 'lmstudio', label: t('provider.lmstudio') },
+        ];
+        // Built-in engine needs the Chrome/Edge offscreen API + WebGPU.
+        if (typeof browserAPI.offscreen !== 'undefined') {
+            opts.push({ value: 'builtin-webgpu', label: t('provider.builtin') });
+        }
+        return opts;
+    },
     initialValue: 'auto',
 });
 
