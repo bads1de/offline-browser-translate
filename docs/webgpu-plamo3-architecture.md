@@ -256,3 +256,10 @@ offline-browser-translate/
 5. §3.1 の mermaid 図: OPFS は `plamo-3-translate-0.8b-Q4_K_M.gguf`（約546MB）に修正
 
 ---
+
+### 7.4 Firefox 向け manifest の分割 (2026-11-09)
+
+- Firefox (about:debugging / AMO) は manifest が未知の offscreen パーミッションを宣言すると読み込み/提出を拒否する。実デバイス調査: MDN の permissions 一覧と API リファレンスに offscreen は存在しない（404）。
+- そこで manifest.firefox.json（=manifest.json から "offscreen" のみ除去したもの）をリポジトリに同梱し、README に Firefox への読み込み手順（Copy-Item manifest.firefox.json manifest.json）と AMO 提出時はこのファイルを manifest.json として zip する旨を記載した。
+- larms は Firefox でも利用できるため残す。ackground.scripts が Firefox 側の入口で、service_worker キーは無視される（既存の構成を維持）。
+- Chrome / Edge 向けは引き続き manifest.json をそのまま使い、clone & load unpacked でビルド不要（bundle 同梱済み）。

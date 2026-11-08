@@ -33,9 +33,20 @@ With a translation-capable model loaded (e.g. `TranslateGemma`, `tencent.hunyuan
 ## Installation
 
 ### Firefox / Mullvad Browser
-1. Go to `about:debugging#/runtime/this-firefox`
-2. Click **Load Temporary Add-on**
-3. Select the `manifest.json` file
+
+The built-in WebGPU mode needs the Chrome/Edge-only `offscreen` permission, which Firefox rejects at load time. So the repo ships `manifest.firefox.json`, identical to `manifest.json` minus that permission (`alarms` is fine on both). Keep the two in sync; the only allowed difference is the `offscreen` entry.
+
+1. Copy the Firefox manifest into place:
+   ```powershell
+   Copy-Item manifest.firefox.json manifest.json   # Windows / PowerShell
+   # cp manifest.firefox.json manifest.json          # macOS / Linux
+   ```
+   (This overwrites `manifest.json` in the working tree; `git checkout -- manifest.json` restores it. Chrome/Edge users should keep the original.)
+2. Go to `about:debugging#/runtime/this-firefox`
+3. Click **Load Temporary Add-on**
+4. Select the `manifest.json` file
+
+For AMO (Firefox Add-ons) submission, zip the extension with `manifest.firefox.json` as its `manifest.json`. The built-in WebGPU mode stays Chrome/Edge-only there too — Firefox users get the external-server modes, exactly like the Chrome build defaults.
 
 ### Chrome / Chromium
 1. Go to `chrome://extensions`
