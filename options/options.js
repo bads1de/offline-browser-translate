@@ -1069,14 +1069,15 @@ async function refreshCacheCount() {
     }
 }
 
-// Load available models from providers
-async function loadModels() {
+// Load available models from providers. forceRefresh bypasses the background's
+// 60s model-list cache (used by the refresh button and provider switches).
+async function loadModels(forceRefresh = false) {
     if (!elements.modelTrigger) return;
 
     elements.modelTrigger.disabled = true;
     elements.modelTriggerLabel.textContent = t('model.loading');
     try {
-        const response = await browserAPI.runtime.sendMessage({ type: 'LIST_MODELS' });
+        const response = await browserAPI.runtime.sendMessage({ type: 'LIST_MODELS', forceRefresh });
         const models = response.models || [];
 
         modelPicker.setModels(models);
@@ -1517,10 +1518,20 @@ function setupEventListeners() {
     // Refresh models
     if (elements.refreshModels) {
         elements.refreshModels.addEventListener('click', async () => {
-            await loadModels();
+            await loadModels(true);
             showToast(t('toast.modelsRefreshed'));
         });
     }
+
+    // Provider selection applies immediately (same behavior as the popup):
+    // save, then re-list models from the newly selected backend and persist
+    // whatever model gets auto-selected so storage never holds a model id
+    // that belongs to a different backend.
+    providerPicker.onChange = async () => {
+        await saveCurrentSettings();
+        await loadModels(true);
+        await saveCurrentSettings();
+    };
 
     // Save settings
     elements.saveSettings.addEventListener('click', async () => {

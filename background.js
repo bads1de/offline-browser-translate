@@ -99,8 +99,11 @@ Produce only the {{targetLang}} translation, without any additional explanations
     }
 };
 
-// Cache for models to avoid repeated API calls during translation
+// Cache for models to avoid repeated API calls during translation. Keyed by
+// provider + server URLs so switching providers (or pointing at a different
+// server) can never be served a stale list from a previous configuration.
 let cachedModels = null;
+let cachedModelsKey = null;
 let modelsCacheTime = 0;
 const MODEL_CACHE_TTL = 60000; // 60 seconds
 
@@ -133,6 +136,11 @@ async function saveSettings(settings) {
     // Merge defaults < cached < new so fields unknown to the caller are preserved
     cachedSettings = { ...DEFAULT_SETTINGS, ...cachedSettings, ...settings };
     debugEnabled = !!cachedSettings.debug;
+    // Any settings save may change the provider or server URLs — drop the
+    // model-list cache so the next LIST_MODELS re-probes the new backend.
+    cachedModels = null;
+    cachedModelsKey = null;
+    modelsCacheTime = 0;
     await browserAPI.storage.local.set({ settings: cachedSettings });
     return cachedSettings;
 }
@@ -517,9 +525,21 @@ async function listLMStudioModels(url) {
     }
 }
 
+// Stable identity for "which servers are we listing models from". Two calls with
+// the same signature hit the same servers, so the 60s TTL cache stays valid; any
+// change to provider or URLs invalidates it.
+function modelCacheKey(settings) {
+    return [
+        settings.provider || 'auto',
+        normalizeServerUrl(settings.ollamaUrl),
+        normalizeServerUrl(settings.lmstudioUrl),
+    ].join('|');
+}
+
 async function listModels(settings, useCache = true) {
+    const key = modelCacheKey(settings);
     // Return cached models if available and not expired
-    if (useCache && cachedModels && (Date.now() - modelsCacheTime < MODEL_CACHE_TTL)) {
+    if (useCache && cachedModels && cachedModelsKey === key && (Date.now() - modelsCacheTime < MODEL_CACHE_TTL)) {
         return cachedModels;
     }
 
@@ -527,6 +547,7 @@ async function listModels(settings, useCache = true) {
     if (settings.provider === 'builtin-webgpu') {
         const models = builtinModelEntry();
         cachedModels = models;
+        cachedModelsKey = key;
         modelsCacheTime = Date.now();
         return models;
     }
@@ -550,6 +571,7 @@ async function listModels(settings, useCache = true) {
 
     // Update cache
     cachedModels = models;
+    cachedModelsKey = key;
     modelsCacheTime = Date.now();
 
     return models;

@@ -280,3 +280,12 @@ offline-browser-translate/
 - 単文の wall-clock は約0.28秒/本。ページ一括のような数文なら実用範囲。長文・文書の一括翻訳では差が体感できる。
 - RDNA-1（RX 5700）は INT dot / 行列コアなしにも関わらず WebGPU で 40 tok/s 出ており、hachiue の効率は良好。
 - プレフィルは計測条件が違う（pp512 vs 短文 ~30 tok）ので単純比較は不可。decode tok/s が比較可能な指標。
+
+### 7.6 外部 llama-server 直結の実機検証 (2026-11-09)
+
+`llama-server.exe -m models\plamo-3-translate-0.8b-Q4_K_M.gguf --port <port> --no-webui`（ホスト: Windows, ポートは他プロセスと衝突しない値を選ぶこと。このマシンでは 8080 が AgentService に占有されていたので 8091 で検証）を立て、この拡張を Provider = 「LMStudio / OpenAI-compatible」（URL を `http://localhost:<port>`）で繋いだ実測:
+
+- `GET /v1/models` の model id は GGUF のフルパス（例: `...\plamo-3-translate-0.8b-Q4_K_M.gguf`）が返る。`/plamo/i` にマッチするため、拡張側の自動フォーマット検出が **PLaMo (PFML3) 経路** を正しく選ぶ。
+- 短文 EN→JA（"The quick brown fox jumps over the lazy dog."）が **0.11s** で返り、訳文は「素早い茶色のキツネがのんびりした犬を飛び越える。」（idiomatic で正確）。
+- サーバー側ログ: prompt eval 553 tok/s / decode 256 tok/s / total 90ms。§7.5 の llama-bench 実測（decode 348.6）と同桁で、短文ではロード済み KV の恩恵が大きい。
+- 結論: 外部サーバーモードにそのまま繋いで使えることを実機確認。WebGPU 内蔵との速度差（約8.6倍、§7.5）も短文 wall-clock で再現（0.28s → 0.11s）。
