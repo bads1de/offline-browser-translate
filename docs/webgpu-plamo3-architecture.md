@@ -261,5 +261,22 @@ offline-browser-translate/
 
 - Firefox (about:debugging / AMO) は manifest が未知の offscreen パーミッションを宣言すると読み込み/提出を拒否する。実デバイス調査: MDN の permissions 一覧と API リファレンスに offscreen は存在しない（404）。
 - そこで manifest.firefox.json（=manifest.json から "offscreen" のみ除去したもの）をリポジトリに同梱し、README に Firefox への読み込み手順（Copy-Item manifest.firefox.json manifest.json）と AMO 提出時はこのファイルを manifest.json として zip する旨を記載した。
-- larms は Firefox でも利用できるため残す。ackground.scripts が Firefox 側の入口で、service_worker キーは無視される（既存の構成を維持）。
+- alarms は Firefox でも利用できるため残す。background.scripts が Firefox 側の入口で、service_worker キーは無視される（既存の構成を維持）。
 - Chrome / Edge 向けは引き続き manifest.json をそのまま使い、clone & load unpacked でビルド不要（bundle 同梱済み）。
+
+### 7.5 実機ベンチマーク: WebGPU vs llama.cpp (2026-11-09, AMD Radeon RX 5700 / RDNA-1)
+
+同一マシン・同一 GGUF（plamo-3-translate-0.8b-Q4_K_M, 573,125,952B）での実測。llama.cpp は b12121（Vulkan ビルド）の llama-bench、WebGPU 側は本拡張の本番経路（BUILTIN_SELFTEST: hachiue + PFML3 prompt）で計測。
+
+| 環境 | pp512 (prefill) | tg128 (decode) | 備考 |
+|---|---|---|---|
+| llama.cpp Vulkan (`-ngl -1`) | 3,438.68 ± 32.62 tok/s | 348.58 ± 6.63 tok/s | 同一GPUでの上限 |
+| llama.cpp CPU のみ (`-ngl 0`, 8 threads, Haswell) | 2,166.16 ± 82.26 tok/s | 33.44 ± 1.50 tok/s | RDNA-1 でもCPUが十分速い |
+| WebGPU (Chrome + hachiue, 本拡張経路) | 約32–44 tok/s（短文） | **40.4 tok/s 平均**（39.0–42.0） | SELFTEST ×5 回 |
+
+所感:
+
+- decode は WebGPU 40.4 vs llama.cpp Vulkan 348.6 → **約8.6倍 llama.cpp が速い**。ただし WebGPU も CPU-only llama.cpp（33.4）より速い。
+- 単文の wall-clock は約0.28秒/本。ページ一括のような数文なら実用範囲。長文・文書の一括翻訳では差が体感できる。
+- RDNA-1（RX 5700）は INT dot / 行列コアなしにも関わらず WebGPU で 40 tok/s 出ており、hachiue の効率は良好。
+- プレフィルは計測条件が違う（pp512 vs 短文 ~30 tok）ので単純比較は不可。decode tok/s が比較可能な指標。
