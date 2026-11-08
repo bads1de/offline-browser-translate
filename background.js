@@ -1406,6 +1406,7 @@ async function translate(textItems, targetLanguage, settings, onPartial = null) 
     // waiting for the whole batch.
     if (pending.length > 0 && settings.plainTextFallback !== false) {
         debugWarn(`[Background] Falling back to per-item translation for ${pending.length} item(s)`);
+        let perItemLastError = null;
         for (const item of pending) {
             try {
                 const text = isPlainText
@@ -1418,8 +1419,18 @@ async function translate(textItems, targetLanguage, settings, onPartial = null) 
                     }
                 }
             } catch (e) {
+                perItemLastError = e;
                 debugWarn(`[Background] per-item fallback failed for id ${item.id}:`, e.message);
             }
+        }
+        // Every item failed on the built-in engine — surface a single actionable
+        // error instead of a page full of silent no-ops. The usual cause is a
+        // missing/blocked WebGPU adapter (driver blocklist, GPU disabled,
+        // headless policy), which per-item fallbacks alone can never fix.
+        if (results.size === 0 && perItemLastError && provider === 'builtin-webgpu') {
+            throw new Error(`Built-in WebGPU translation failed: ${perItemLastError.message}. `
+                + 'Check that hardware acceleration is enabled and WebGPU is available (Chrome/Edge), '
+                + 'or switch back to an external server in the options page.');
         }
     }
 
