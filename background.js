@@ -123,6 +123,12 @@ async function loadSettings() {
     try {
         const result = await browserAPI.storage.local.get('settings');
         cachedSettings = { ...DEFAULT_SETTINGS, ...result.settings };
+        // Settings stored by an older version may still name the removed
+        // built-in WebGPU engine. Map it to auto-detect so the extension
+        // keeps working instead of selecting a dead model.
+        if (!['auto', 'ollama', 'lmstudio'].includes(cachedSettings.provider)) {
+            cachedSettings.provider = 'auto';
+        }
         debugEnabled = !!cachedSettings.debug;
         return cachedSettings;
     } catch (e) {
@@ -135,6 +141,10 @@ async function loadSettings() {
 async function saveSettings(settings) {
     // Merge defaults < cached < new so fields unknown to the caller are preserved
     cachedSettings = { ...DEFAULT_SETTINGS, ...cachedSettings, ...settings };
+    // Same guard as loadSettings: never persist the removed built-in provider.
+    if (!['auto', 'ollama', 'lmstudio'].includes(cachedSettings.provider)) {
+        cachedSettings.provider = 'auto';
+    }
     debugEnabled = !!cachedSettings.debug;
     // Any settings save may change the provider or server URLs — drop the
     // model-list cache so the next LIST_MODELS re-probes the new backend.
@@ -370,26 +380,6 @@ async function buildGlossaryBlock(settings, text, targetLanguage) {
     return `[Glossary] Use these exact translations for the listed terms. Keep them consistent and do not alter them:\n${lines.join('\n')}`;
 }
 
-// Glossary entries that match `text`, as [{source, target}, ...] — for the
-// built-in WebGPU engine, which takes them natively via PFML3 rather than an
-// instruction block (small dedicated models follow the native format far more
-// reliably). Returns null when the glossary is off/unmatched. Mirrors
-// buildGlossaryBlock's matching (whole-segment hits are handled by
-// getGlossaryExactIndex earlier in the pipeline).
-async function collectGlossaryMatches(settings, text, targetLanguage) {
-    if (settings.useGlossary === false) return null;
-    const entries = await loadGlossary();
-    if (!entries.length || !glossaryAppliesTo(targetLanguage)) return null;
-    if (!glossaryAutomaton) glossaryAutomaton = buildGlossaryAutomaton(entries);
-    const hits = scanGlossary(glossaryAutomaton, entries, text);
-    if (!hits.length) return null;
-    return hits.map(idx => {
-        const [src, rawTgt] = entries[idx];
-        const tgt = (rawTgt === undefined || rawTgt === '') ? src : rawTgt;
-        return { source: src, target: tgt };
-    });
-}
-
 // ============================================================================
 // Provider Detection & Model Listing
 // ============================================================================
@@ -541,15 +531,6 @@ async function listModels(settings, useCache = true) {
     // Return cached models if available and not expired
     if (useCache && cachedModels && cachedModelsKey === key && (Date.now() - modelsCacheTime < MODEL_CACHE_TTL)) {
         return cachedModels;
-    }
-
-    // Built-in engine: exactly one model, no server probing
-    if (settings.provider === 'builtin-webgpu') {
-        const models = builtinModelEntry();
-        cachedModels = models;
-        cachedModelsKey = key;
-        modelsCacheTime = Date.now();
-        return models;
     }
 
     const models = [];
@@ -809,12 +790,6 @@ function parseTranslationResponse(response, originalItems, finishReason) {
 async function autoDetectAndSelectModel() {
     try {
         const settings = await getSettings();
-        if (settings.provider === 'builtin-webgpu') {
-            if (settings.selectedModel === BUILTIN_WEBGPU_MODEL_ID) return null;
-            await saveSettings({ selectedModel: BUILTIN_WEBGPU_MODEL_ID });
-            console.log('[Background] Auto-selected built-in WebGPU model');
-            return { id: BUILTIN_WEBGPU_MODEL_ID, provider: 'builtin-webgpu' };
-        }
         if (settings.selectedModel) return null; // already configured
 
         const models = await listModels(settings, false); // force fresh fetch
@@ -838,9 +813,6 @@ async function autoDetectAndSelectModel() {
 }
 
 async function detectModelProvider(modelId, settings) {
-    if (settings.provider === 'builtin-webgpu' || modelId === BUILTIN_WEBGPU_MODEL_ID) {
-        return 'builtin-webgpu';
-    }
     // Use cached models to avoid extra API calls
     const models = await listModels(settings, true);
     const model = models.find(m => m.id === modelId);
@@ -1033,23 +1005,6 @@ async function callProvider(provider, settings, modelId, systemPrompt, userPromp
 // for both the OpenAI-compatible (llama.cpp / LM Studio) and Ollama paths.
 async function translatePlamoItem(provider, settings, modelId, text, targetLangCode) {
     const lang = (targetLangCode || 'ja').toLowerCase();
-    // Built-in WebGPU engine (hachiue) via the offscreen document. Uses the
-    // native PFML3 glossary path, so terminology hints actually stick on 0.8B.
-    if (provider === 'builtin-webgpu') {
-        let glossary;
-        try {
-            glossary = await collectGlossaryMatches(settings, text, targetLangCode) || undefined;
-        } catch (e) {
-            glossary = undefined;
-        }
-        const resp = await builtinWebGPUTranslate({
-            text,
-            targetLang: lang,
-            sourceLang: settings.sourceLanguage,
-            glossary,
-        });
-        return cleanTranslationText((resp.translation || '').trim());
-    }
     if (provider === 'ollama') {
         const body = {
             model: modelId,
@@ -1148,15 +1103,11 @@ function hashString(str) {
 
 async function translate(textItems, targetLanguage, settings, onPartial = null) {
     const translateStartTs = performance.now();
-    const isBuiltin = settings.provider === 'builtin-webgpu';
-    const modelId = isBuiltin ? BUILTIN_WEBGPU_MODEL_ID : settings.selectedModel;
+    const modelId = settings.selectedModel;
     if (!modelId) throw new Error('No model selected');
 
     // Detect provider if auto
     let provider = settings.provider;
-    if (provider === 'builtin-webgpu' && !builtinWebgpuSupported()) {
-        throw new Error('Built-in WebGPU mode is not supported in this browser (it needs Chrome/Edge with the offscreen API and WebGPU). Switch back to an external server in the options page.');
-    }
     if (provider === 'auto') {
         provider = await detectModelProvider(modelId, settings);
         if (!provider) throw new Error('Could not detect model provider');
@@ -1445,15 +1396,6 @@ async function translate(textItems, targetLanguage, settings, onPartial = null) 
                 debugWarn(`[Background] per-item fallback failed for id ${item.id}:`, e.message);
             }
         }
-        // Every item failed on the built-in engine — surface a single actionable
-        // error instead of a page full of silent no-ops. The usual cause is a
-        // missing/blocked WebGPU adapter (driver blocklist, GPU disabled,
-        // headless policy), which per-item fallbacks alone can never fix.
-        if (results.size === 0 && perItemLastError && provider === 'builtin-webgpu') {
-            throw new Error(`Built-in WebGPU translation failed: ${perItemLastError.message}. `
-                + 'Check that hardware acceleration is enabled and WebGPU is available (Chrome/Edge), '
-                + 'or switch back to an external server in the options page.');
-        }
     }
 
     // Persist freshly produced translations. Awaited so an MV3 service worker
@@ -1483,209 +1425,6 @@ async function translate(textItems, targetLanguage, settings, onPartial = null) 
         ? { id: item.id, text: results.get(item.id) }
         : { id: item.id, error: 'translation failed' });
     return { translations, fromCache: fromCacheItems, total: textItems.length, cacheActive: cacheEnabled };
-}
-
-// ============================================================================
-// Built-in WebGPU engine — offscreen document lifecycle.
-// The actual inference lives in the offscreen document (see offscreen/). The
-// service worker only creates/closes the document and forwards messages.
-// Phase 3 will route translate() through here when provider === 'builtin-webgpu'.
-// ============================================================================
-
-const BUILTIN_OFFSCREEN_PATH = 'offscreen/offscreen.html';
-const BUILTIN_IDLE_ALARM = 'builtin-webgpu-idle-watchdog';
-const BUILTIN_IDLE_MS = 5 * 60 * 1000;
-const BUILTIN_LOAD_TIMEOUT_MS = 15 * 60 * 1000; // slow networks get 15 minutes for the ~546MB download
-const BUILTIN_CALL_TIMEOUT_MS = 90 * 1000;      // ordinary inference round-trip
-
-// Virtual model id for the built-in engine. Contains "plamo" on purpose so the
-// request-format auto-detection resolves to the plain-text PLaMo path and the
-// cache key stays distinct from external-server models.
-const BUILTIN_WEBGPU_MODEL_ID = 'plamo-3-translate-0.8b-Q4_K_M';
-
-// SW-side view of the model file. The byte size is fixed by the pinned commit.
-const BUILTIN_MODEL_URL = 'https://huggingface.co/pfnet/plamo-3-translate-0.8b-GGUF/resolve/0c4af2b003fdd94b6868aa955414c1c86ee96997/plamo-3-translate-0.8b-Q4_K_M.gguf';
-const BUILTIN_MODEL_SIZE = 573125952;
-const BUILTIN_IDB_NAME = 'hachiue-model-cache-v1';
-
-// hachiue hashes the URL with cyrb53 → hex (16 chars) and stores
-// <hash>.gguf.bin + <hash>.meta.json in OPFS. Reimplemented (Apache-2.0) so the
-// service worker can measure/delete the model without waking the offscreen
-// document — OPFS persists across offscreen document lifetimes.
-function hachiueCacheKey(url) {
-    let h1 = 0xdeadbeef ^ url.length;
-    let h2 = 0x41c6ce57 ^ url.length;
-    for (let i = 0; i < url.length; i++) {
-        const ch = url.charCodeAt(i);
-        h1 = Math.imul(h1 ^ ch, 2654435761);
-        h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
-}
-
-async function builtinOpfsMeasure() {
-    // Measure directly in the service worker when OPFS is available here;
-    // fall back to null (unknown) rather than waking the offscreen document.
-    try {
-        if (typeof navigator === 'undefined' || !navigator.storage || typeof navigator.storage.getDirectory !== 'function') {
-            return { supported: false, cached: null, sizeBytes: null };
-        }
-        const root = await navigator.storage.getDirectory();
-        const key = hachiueCacheKey(BUILTIN_MODEL_URL);
-        try {
-            const fh = await root.getFileHandle(`${key}.gguf.bin`);
-            const file = await fh.getFile();
-            return { supported: true, cached: true, sizeBytes: file.size };
-        } catch {
-            return { supported: true, cached: false, sizeBytes: 0 };
-        }
-    } catch {
-        return { supported: false, cached: null, sizeBytes: null };
-    }
-}
-
-// Deletes the cached model (OPFS chunks + IndexedDB fallback). If the
-// offscreen document is alive, its engine is unloaded first.
-async function builtinModelDelete() {
-    let unloaded = false;
-    if (await builtinOffscreenExists()) {
-        try {
-            await builtinOffscreenCall({ type: 'OFFSCREEN_UNLOAD' }, { timeoutMs: 15000 });
-            unloaded = true;
-        } catch (e) {
-            debugWarn('[Background] builtinModelDelete: unload failed (continuing):', e && e.message);
-        }
-    }
-    let opfsRemoved = [];
-    try {
-        if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.getDirectory === 'function') {
-            const root = await navigator.storage.getDirectory();
-            const key = hachiueCacheKey(BUILTIN_MODEL_URL);
-            for (const name of [`${key}.gguf.bin`, `${key}.meta.json`]) {
-                try { await root.removeEntry(name); opfsRemoved.push(name); } catch { /* absent */ }
-            }
-        }
-    } catch (e) {
-        debugWarn('[Background] builtin OPFS delete failed:', e && e.message);
-    }
-    let idbDeleted = false;
-    try {
-        if (typeof indexedDB !== 'undefined') {
-            await new Promise((resolve) => {
-                try {
-                    const req = indexedDB.deleteDatabase(BUILTIN_IDB_NAME);
-                    req.onsuccess = () => { idbDeleted = true; resolve(); };
-                    req.onerror = () => resolve();
-                    req.onblocked = () => resolve();
-                } catch { resolve(); }
-            });
-        }
-    } catch (e) {
-        debugWarn('[Background] builtin IDB delete failed:', e && e.message);
-    }
-    return { ok: true, unloaded, opfsRemoved, idbDeleted };
-}
-
-function builtinWebgpuSupported() {
-    // Firefox (and any engine without the offscreen API) cannot run the built-in mode.
-    return typeof browserAPI.offscreen !== 'undefined' && !!browserAPI.offscreen;
-}
-
-function builtinModelEntry() {
-    return [{
-        id: BUILTIN_WEBGPU_MODEL_ID,
-        name: 'PLaMo 3 Translate 0.8B (内蔵 / Built-in)',
-        provider: 'builtin-webgpu'
-    }];
-}
-
-// Latest progress report from the offscreen document (memory only; the popup
-// polls BUILTIN_MODEL_STATUS for a snapshot).
-let builtinLastProgress = null;
-
-// Tab id of an in-flight built-in translation started by a content script, so
-// OFFSCREEN_PROGRESS can be forwarded to that tab for the page-side widget.
-// Set in the TRANSLATE case, cleared in its finally block.
-let builtinProgressTabId = null;
-
-async function builtinOffscreenExists() {
-    try {
-        if (!browserAPI.runtime.getContexts) return false;
-        const contexts = await browserAPI.runtime.getContexts({
-            contextTypes: ['OFFSCREEN_DOCUMENT'],
-            documentUrls: [browserAPI.runtime.getURL(BUILTIN_OFFSCREEN_PATH)],
-        });
-        return Array.isArray(contexts) && contexts.length > 0;
-    } catch (e) {
-        debugWarn('[Background] builtinOffscreenExists failed:', e && e.message);
-        return false;
-    }
-}
-
-let builtinCreating = null;
-
-async function ensureBuiltinOffscreen() {
-    if (await builtinOffscreenExists()) return;
-    // chrome.offscreen allows only one offscreen document; serialize creators.
-    if (builtinCreating) { await builtinCreating; return; }
-    builtinCreating = (async () => {
-        await browserAPI.offscreen.createDocument({
-            url: BUILTIN_OFFSCREEN_PATH,
-            reasons: ['WORKERS'],
-            justification: 'Run the built-in WebGPU translation model (hachiue) to translate page text without leaving the machine.',
-        });
-    })();
-    try {
-        await builtinCreating;
-    } finally {
-        builtinCreating = null;
-    }
-}
-
-async function closeBuiltinOffscreen() {
-    try {
-        await browserAPI.offscreen.closeDocument();
-        debugLog('[Background] offscreen document closed');
-    } catch (e) {
-        debugWarn('[Background] closeDocument failed (may already be closed):', e && e.message);
-    }
-}
-
-function builtinTimeout(ms, message) {
-    return new Promise((_, reject) => setTimeout(() => reject(new Error(message || `Timed out after ${ms}ms`)), ms));
-}
-
-async function builtinOffscreenCall(message, { timeoutMs = BUILTIN_CALL_TIMEOUT_MS } = {}) {
-    if (!browserAPI.offscreen) {
-        throw new Error('BUILTIN_UNAVAILABLE: this browser does not support offscreen documents');
-    }
-    await ensureBuiltinOffscreen();
-    const response = await Promise.race([
-        browserAPI.runtime.sendMessage({ ...message, target: 'offscreen' }),
-        builtinTimeout(timeoutMs, `offscreen did not answer ${message.type} within ${Math.round(timeoutMs / 1000)}s`),
-    ]);
-    if (!response) throw new Error('offscreen returned an empty response (document may have crashed)');
-    if (response.ok === false) throw new Error(response.error || `offscreen error in ${message.type}`);
-    return response;
-}
-
-// Single inference round-trip on the built-in engine. Used by the actual
-// translate path (Phase 3) and by BUILTIN_SELFTEST below.
-async function builtinWebGPUTranslate(message) {
-    return builtinOffscreenCall(
-        { type: 'OFFSCREEN_TRANSLATE', ...message },
-        { timeoutMs: BUILTIN_LOAD_TIMEOUT_MS },
-    );
-}
-
-// Run a trivial translation end-to-end to prove the whole path works. Kept
-// as a first-class message so support/diagnostics can exercise it.
-async function builtinSelfTest() {
-    const probe = 'The meeting has been rescheduled for next Monday.';
-    const response = await builtinWebGPUTranslate({ text: probe, targetLang: 'ja' });
-    return { probe, translation: response.translation, stats: response.stats };
 }
 
 // ============================================================================
@@ -1812,22 +1551,12 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         };
                     }
 
-                    // Route built-in model-download progress to the page that
-                    // asked for the translation (its widget shows the download).
-                    builtinProgressTabId = (settingsWithSource.provider === 'builtin-webgpu' && sender && sender.tab && typeof sender.tab.id === 'number')
-                        ? sender.tab.id
-                        : null;
-                    let result;
-                    try {
-                        result = await translate(
-                            message.texts,
-                            message.targetLanguage,
-                            settingsWithSource,
-                            makePartialReporter(sender)
-                        );
-                    } finally {
-                        builtinProgressTabId = null;
-                    }
+                    const result = await translate(
+                        message.texts,
+                        message.targetLanguage,
+                        settingsWithSource,
+                        makePartialReporter(sender)
+                    );
                     sendResponse({
                         translations: result.translations,
                         fromCache: result.fromCache,
@@ -1835,170 +1564,6 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         cacheActive: result.cacheActive
                     });
                     break;
-
-                case 'OFFSCREEN_PROGRESS': {
-                    // Emitted by the offscreen document itself as the model downloads.
-                    builtinLastProgress = {
-                        phase: message.phase || 'weights',
-                        loadedBytes: Number(message.loadedBytes) || 0,
-                        totalBytes: Number(message.totalBytes) || 0,
-                        cached: !!message.cached,
-                        updatedAt: Date.now()
-                    };
-                    // Forward to the tab that triggered the built-in translation so
-                    // its page-side widget can show model-download progress.
-                    if (typeof builtinProgressTabId === 'number' && browserAPI.tabs && browserAPI.tabs.sendMessage) {
-                        const total = builtinLastProgress.totalBytes;
-                        const loaded = builtinLastProgress.loadedBytes;
-                        const percent = total > 0 ? Math.min(99, Math.floor((loaded / total) * 100)) : 0;
-                        const payload = {
-                            type: 'BUILTIN_PROGRESS',
-                            percent,
-                            message: `Preparing built-in model… ${percent}%`,
-                        };
-                        try {
-                            browserAPI.tabs.sendMessage(builtinProgressTabId, payload).catch(() => { /* tab gone or uninjected */ });
-                        } catch (tabErr) { /* tab gone — fine */ }
-                    }
-                    sendResponse({ ok: true });
-                    break;
-                }
-
-                case 'BUILTIN_IDLE_UNLOAD':
-                    // Offscreen disposed its engine after the 5-minute idle timer
-                    // fired; shut the whole document down so VRAM/RSS returns to 0.
-                    await closeBuiltinOffscreen();
-                    sendResponse({ ok: true });
-                    break;
-
-                case 'BUILTIN_MODEL_STATUS': {
-                    const exists = await builtinOffscreenExists();
-                    if (!exists) {
-                        sendResponse({ ok: true, status: { state: 'unloaded', exists: false, progress: builtinLastProgress } });
-                        break;
-                    }
-                    try {
-                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_STATUS' }, { timeoutMs: 8000 });
-                        sendResponse({ ok: true, status: { ...resp.status, exists: true, progress: builtinLastProgress } });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message, status: { state: 'error', exists: true, progress: builtinLastProgress } });
-                    }
-                    break;
-                }
-
-                case 'BUILTIN_MODEL_PROGRESS': {
-                    const exists = await builtinOffscreenExists();
-                    let status = null;
-                    if (exists) {
-                        try {
-                            const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_STATUS' }, { timeoutMs: 5000 });
-                            status = resp.status;
-                        } catch (e) { /* best-effort */ }
-                    }
-                    sendResponse({
-                        ok: true,
-                        progress: builtinLastProgress,
-                        status: status || { state: 'unloaded', exists },
-                    });
-                    break;
-                }
-
-                case 'BUILTIN_MODEL_LOAD': {
-                    try {
-                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_LOAD_MODEL' }, { timeoutMs: BUILTIN_LOAD_TIMEOUT_MS });
-                        sendResponse({ ok: true, status: { ...resp.status, exists: true } });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
-
-                case 'BUILTIN_MODEL_UNLOAD': {
-                    try {
-                        if (await builtinOffscreenExists()) {
-                            await builtinOffscreenCall({ type: 'OFFSCREEN_UNLOAD' }, { timeoutMs: 15000 });
-                        }
-                        await closeBuiltinOffscreen();
-                        builtinLastProgress = null;
-                        sendResponse({ ok: true });
-                    } catch (e) {
-                        // Best-effort: close the document anyway so the renderer is gone.
-                        await closeBuiltinOffscreen();
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
-
-                case 'BUILTIN_MODEL_CACHE_INFO': {
-                    // Cheap, side-effect-free SW-side OPFS measure; no offscreen
-                    // document needed. Falls back to the offscreen document only if
-                    // OPFS isn't reachable from this service worker.
-                    const swMeasure = await builtinOpfsMeasure();
-                    if (swMeasure.supported) {
-                        sendResponse({ ok: true, cache: { ...swMeasure, modelSizeBytes: BUILTIN_MODEL_SIZE }, exists: await builtinOffscreenExists() });
-                        break;
-                    }
-                    const exists = await builtinOffscreenExists();
-                    if (!exists) {
-                        sendResponse({ ok: true, cache: { cached: null, sizeBytes: null, modelSizeBytes: BUILTIN_MODEL_SIZE }, exists: false });
-                        break;
-                    }
-                    try {
-                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_CACHE_INFO' }, { timeoutMs: 10000 });
-                        sendResponse({ ok: true, cache: resp.cache, exists: true });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
-
-                case 'BUILTIN_MODEL_DELETE': {
-                    try {
-                        const result = await builtinModelDelete();
-                        builtinLastProgress = null;
-                        await closeBuiltinOffscreen();
-                        sendResponse({ ok: true, ...result, cache: await builtinOpfsMeasure() });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
-
-                case 'BUILTIN_MODEL_CLEAR_CACHE': {
-                    try {
-                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_CLEAR_CACHE' }, { timeoutMs: 60000 });
-                        sendResponse({ ok: true, status: resp.status });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
-
-                case 'BUILTIN_SET_IDLE_TIMEOUT': {
-                    // Diagnostics hook: override the offscreen idle timer (default 5min).
-                    const ms = Number(message.ms);
-                    try {
-                        if (!(await builtinOffscreenExists())) {
-                            sendResponse({ ok: false, error: 'offscreen document is not open' });
-                            break;
-                        }
-                        const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_SET_IDLE_TIMEOUT', ms }, { timeoutMs: 5000 });
-                        sendResponse({ ok: true, idleTimeoutMs: resp.idleTimeoutMs });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
-
-                case 'BUILTIN_SELFTEST': {
-                    try {
-                        const result = await builtinSelfTest();
-                        sendResponse({ ok: true, ...result });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
 
                 case 'CLEAR_CACHE':
                     try {
@@ -2114,35 +1679,6 @@ browserAPI.runtime.onStartup.addListener(async () => {
         // Best-effort; a failed clear just leaves the previous session's cache.
     }
 });
-
-// ============================================================================
-// Built-in WebGPU idle watchdog
-// ============================================================================
-// Backstop for the offscreen document's own 5-minute idle timer: the document
-// disposes the engine itself and asks the SW to close it. Should that message
-// get lost, or the renderer hang, this alarm tears it down. It never closes a
-// document whose engine is busy or below the threshold.
-if (browserAPI.alarms) {
-    browserAPI.alarms.onAlarm.addListener(async (alarm) => {
-        if (!alarm || alarm.name !== BUILTIN_IDLE_ALARM) return;
-        try {
-            if (!(await builtinOffscreenExists())) return;
-            const resp = await builtinOffscreenCall({ type: 'OFFSCREEN_STATUS' }, { timeoutMs: 8000 });
-            const status = resp && resp.status;
-            if (status && status.state === 'ready'
-                && typeof status.idleMs === 'number'
-                && status.idleMs >= BUILTIN_IDLE_MS) {
-                debugLog('[Background] watchdog: offscreen idle >=5min — closing document');
-                await closeBuiltinOffscreen();
-            }
-        } catch (e) {
-            debugWarn('[Background] idle watchdog failed:', e && e.message);
-        }
-    });
-    // Alarm creation is idempotent per name; safe to run on every SW start.
-    browserAPI.alarms.create(BUILTIN_IDLE_ALARM, { periodInMinutes: 1 });
-}
-
 // ============================================================================
 // Context Menu
 // ============================================================================

@@ -1,5 +1,2 @@
 # Build artifacts (extension packages uploaded to Firefox)
 *.zip
-
-# Built-in WebGPU module dependencies (bundle itself IS committed)
-offscreen/node_modules/

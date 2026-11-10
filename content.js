@@ -1524,14 +1524,6 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ received: true });
             break;
 
-        case 'BUILTIN_PROGRESS':
-            // Forwarded by the background while the built-in model downloads or
-            // loads (before inference has started). The translation widget is
-            // already in 'progress' state, so just mirror the download percent.
-            updateProgressWidget(message.percent ?? 0, message.message);
-            sendResponse({ received: true });
-            break;
-
         case 'PARTIAL_TRANSLATION':
             // Streaming apply: the background forwards each item as soon as its
             // single-item translation finishes, so text lands on the page

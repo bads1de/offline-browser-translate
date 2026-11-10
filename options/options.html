@@ -24,9 +24,6 @@
                 <li><a href="#section-provider" class="nav-link active" data-section="section-provider">
                         <span class="nav-icon">🔌</span> <span data-i18n="nav.provider">Provider</span>
                     </a></li>
-                <li><a href="#section-builtin" class="nav-link" data-section="section-builtin">
-                        <span class="nav-icon">🧩</span> <span data-i18n="nav.builtin">Built-in Model</span>
-                    </a></li>
                 <li><a href="#section-translation" class="nav-link" data-section="section-translation">
                         <span class="nav-icon">🌍</span> <span data-i18n="nav.translation">Translation</span>
                     </a></li>
@@ -126,51 +123,6 @@
                             </div>
                             <p class="hint" data-i18n="model.hint">Select the model to use for translations. Click the pin icon on a row to
                                 keep it near the top.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Built-in Model (PLaMo 3 Translate on WebGPU) -->
-                <section class="settings-section" id="section-builtin">
-                    <div class="section-header">
-                        <h2 data-i18n="builtin.sectionTitle">🧩 Built-in Model</h2>
-                        <p class="section-description" data-i18n="builtin.sectionDesc">PLaMo 3 Translate 0.8B runs entirely in your browser on WebGPU (Chrome/Edge only). The model (~546 MB) downloads once, is cached on your disk, and is unloaded from VRAM after 5 idle minutes.</p>
-                    </div>
-
-                    <div class="form-grid">
-                        <div class="form-group span-full" id="builtinUnsupportedNote" hidden>
-                            <p class="hint" data-i18n="builtin.notAvailable">Built-in mode requires Chrome/Edge (offscreen API + WebGPU). Firefox can use external-server providers instead.</p>
-                        </div>
-
-                        <div class="form-group span-full" id="builtinModelBox">
-                            <div class="builtin-status-box">
-                                <div class="builtin-status-row">
-                                    <span class="builtin-status-label" data-i18n="builtin.status">Model</span>
-                                    <span id="builtinStateLabel" class="builtin-state-value">—</span>
-                                </div>
-                                <div class="builtin-status-row">
-                                    <span class="builtin-status-label" data-i18n="builtin.sizeLabel">Downloaded size</span>
-                                    <span id="builtinSizeLabel" class="builtin-state-value">—</span>
-                                </div>
-
-                                <div class="builtin-progress" id="builtinProgressWrap" hidden>
-                                    <div class="progress-track">
-                                        <div class="progress-fill" id="builtinProgressFill"></div>
-                                    </div>
-                                    <div class="builtin-progress-meta">
-                                        <span id="builtinPhaseLabel">Downloading…</span>
-                                        <span id="builtinPercentLabel">0%</span>
-                                    </div>
-                                </div>
-
-                                <p class="builtin-error" id="builtinErrorLabel" hidden></p>
-
-                                <div class="builtin-actions">
-                                    <button type="button" id="builtinDownloadBtn" class="primary-btn" data-i18n="builtin.downloadBtn">Download model (~546 MB)</button>
-                                    <button type="button" id="builtinDeleteBtn" class="danger-btn" data-i18n="builtin.deleteBtn">Delete model</button>
-                                </div>
-                                <p class="hint builtin-license"><span data-i18n="builtin.license">Model: PLaMo 3 Translate (Preferred Networks). Free for personal and non-commercial use; commercial use requires prior registration with PFN.</span> <a href="https://plamo.preferredai.jp/info/plamo-community-license/" target="_blank" rel="noopener noreferrer">PLaMo Community License</a></p>
-                            </div>
                         </div>
                     </div>
                 </section>

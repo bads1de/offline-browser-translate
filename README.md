@@ -4,14 +4,14 @@
 
 **🌐 [日本語版 README はこちら](README.ja.md)**
 
-A privacy-focused browser extension that translates web pages using local LLMs — either with a built-in PLaMo 3 Translate model running fully in your browser (WebGPU), or via Ollama / LMStudio. **Your data never leaves your machine.**
+A privacy-focused browser extension that translates web pages using local LLMs — via Ollama, LMStudio, or any OpenAI-compatible server such as llama.cpp's `llama-server`. **Your data never leaves your machine.**
 
 [![Get the Add-on](https://extensionworkshop.com/assets/img/documentation/publish/get-the-addon-178x60px.dad84b42.png)](https://addons.mozilla.org/en-GB/firefox/addon/local-llm-translator/)
 
 ## Features
 
-- 🔒 **100% Private** - All translations happen on your local machine, either via the built-in WebGPU model or via Ollama / LMStudio
-- 🧩 **Zero setup (built-in model)** - No server, no account, no Docker: on Chrome/Edge, translations run on the PLaMo 3 Translate 0.8B model inside the browser itself. The model (~546 MB) is downloaded once, on first use, then loads from local cache in ~1–2 seconds
+- 🔒 **100% Private** - All translations happen on your local machine, via Ollama / LMStudio / llama.cpp
+- 🦙 **You run the model** - Install a local LLM server once, load a translation-capable model, and translate — llama.cpp's `llama-server`, Ollama, or LMStudio all work
 - 🎯 **Smart Prioritization** - Visible content and headings are translated first
 - 🌍 **Many Languages** - Supports many many languages :3
 - ⚡ **Translation Cache** - Optional: translate identical text once and reuse it (great for forums). Off by default; stored locally with a session-only or persistent mode
@@ -20,35 +20,23 @@ A privacy-focused browser extension that translates web pages using local LLMs �
 
 ## Requirements
 
-**Either** use the built-in model (Chrome / Edge only) — no install needed:
-
-- **Chrome or Edge** with WebGPU support (hardware acceleration enabled). Nothing to run, no account. On first use of the built-in mode, the PLaMo 3 Translate 0.8B model (~546 MB) is downloaded from Hugging Face once and cached on disk (OPFS)
-
-**Or** run one of these locally (works everywhere, including Firefox):
+Run one of these locally:
 
 - **[Ollama](https://ollama.ai/)** (default: `http://localhost:11434`)
 - **[LMStudio](https://lmstudio.ai/)** (default: `http://localhost:1234`)
-- **Any OpenAI-compatible server** — [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, [vLLM](https://github.com/vllm-project/vllm), etc. Put the server's base URL (e.g. `http://localhost:8080`) in the **LMStudio / OpenAI-compatible URL** field; a trailing `/v1` is tolerated and stripped automatically
+- **Any OpenAI-compatible server** — [llama.cpp](https://github.com/ggml-org/llama.cpp)'s `llama-server`, [vLLM](https://github.com/vllm-project/vllm), etc. Put the server's base URL (e.g. `http://localhost:8080`) in the **LMStudio / OpenAI-compatible URL** field; a trailing `/v1` is tolerated and stripped automatically. The easiest local option: [Llama Windows (llama.app)](https://llama.app/) serves the same OpenAI-compatible API; enter `http://127.0.0.1:9931` (its default port) in the **LMStudio / OpenAI-compatible URL** field
 
-With a translation-capable model loaded (e.g. `TranslateGemma`, `tencent.hunyuan-mt`, `qwen3`, etc.)
+With a translation-capable model loaded (e.g. `pfnet/plamo-3-translate-0.8b-GGUF` via llama.cpp, `TranslateGemma`, `tencent.hunyuan-mt`, `qwen3`, etc.), pick **Auto-detect** as the Provider — it finds whichever of the two endpoints above is running.
 
 ## Installation
 
 ### Firefox / Mullvad Browser
 
-The built-in WebGPU mode needs the Chrome/Edge-only `offscreen` permission, which Firefox rejects at load time. So the repo ships `manifest.firefox.json`, identical to `manifest.json` minus that permission (`alarms` is fine on both). Keep the two in sync; the only allowed difference is the `offscreen` entry.
+1. Go to `about:debugging#/runtime/this-firefox`
+2. Click **Load Temporary Add-on**
+3. Select the `manifest.json` file
 
-1. Copy the Firefox manifest into place:
-   ```powershell
-   Copy-Item manifest.firefox.json manifest.json   # Windows / PowerShell
-   # cp manifest.firefox.json manifest.json          # macOS / Linux
-   ```
-   (This overwrites `manifest.json` in the working tree; `git checkout -- manifest.json` restores it. Chrome/Edge users should keep the original.)
-2. Go to `about:debugging#/runtime/this-firefox`
-3. Click **Load Temporary Add-on**
-4. Select the `manifest.json` file
-
-For AMO (Firefox Add-ons) submission, zip the extension with `manifest.firefox.json` as its `manifest.json`. The built-in WebGPU mode stays Chrome/Edge-only there too — Firefox users get the external-server modes, exactly like the Chrome build defaults.
+For AMO (Firefox Add-ons) submission, zip the extension folder and use its existing `manifest.json` — it ships with the gecko settings Firefox expects. The extension uses no Chrome-only APIs, so the same package loads in Chrome/Edge and Firefox.
 
 ### Chrome / Chromium
 1. Go to `chrome://extensions`
@@ -56,7 +44,7 @@ For AMO (Firefox Add-ons) submission, zip the extension with `manifest.firefox.j
 3. Click **Load unpacked**
 4. Select the extension folder
 
-> **No build needed.** The built-in WebGPU module in `offscreen/` is committed as a prebuilt bundle (`offscreen/offscreen.bundle.js`), so a plain `git clone` / branch ZIP loads and runs as-is — no Node.js, npm, bundler, or Docker required. (You only need `npm ci && npm run build` in `offscreen/` if you modify the module's source yourself.)
+> **No build needed.** The extension ships as plain vanilla JavaScript — no Node.js, npm, bundler, or Docker required.
 
 **Coming Soon:** Extension in Chrome Web Store
 
@@ -79,23 +67,11 @@ The extension will:
 - Translate in batches with progress percentage
 - Auto-translate new content (infinite scroll)
 
-### Built-in WebGPU mode (Chrome / Edge)
-
-1. Click the extension icon
-2. Set **Provider** to **Built-in (PLaMo 3 Translate 0.8B / WebGPU)** (Settings or popup)
-3. Click **Translate Page**
-
-First use downloads the model once (~546 MB, one time) — the page widget, the popup, and Options → **Built-in Model** all show download progress. After that, it is cached locally (OPFS) and loads in ~1–2 seconds. After 5 minutes without translating, the model is unloaded to free VRAM; the next translation reloads it from cache. The built-in model is the same PFN PLaMo 3 Translate weights distributed on Hugging Face — the model is not bundled in the extension. Usage of the model is governed by the PLaMo Community License: personal and academic use is free; commercial use requires prior registration with PFN (see `offscreen/MODEL-LICENSE.md`).
-
-The downloaded model can be removed any time from **Options → Built-in Model → Delete model** (frees ~546 MB; you can download it again later). The built-in section also shows the current download state, downloaded size, and the license terms.
-
-This mode is not available on Firefox (it needs the offscreen API) — Firefox defaults to the external-server modes.
-
 ## Privacy
 
 This extension is designed to be privacy-focused:
 
-- ✅ Only connects to `localhost` - no external network requests **unless you opt into the built-in model**, which downloads it from Hugging Face once, on first use, and never sends page text anywhere
+- ✅ Only connects to `localhost` - no external network requests, ever
 - ✅ No analytics or tracking
 - ✅ No data collection
 - ✅ Minimal permissions (only `localhost` host permissions)
@@ -107,8 +83,8 @@ Click **Advanced Settings** to configure:
 
 | Setting | Description |
 |---------|-------------|
-| Provider | Auto-detect, Ollama only, LMStudio only, or Built-in (Chrome/Edge only) |
-| URLs | Custom endpoints for Ollama/LMStudio (hidden in Built-in mode) |
+| Provider | Auto-detect, Ollama only, or LMStudio / OpenAI-compatible only |
+| URLs | Custom endpoints for Ollama/LMStudio |
 | Max tokens/items per batch | Control batch sizes |
 | Temperature | Model creativity (lower = more consistent) |
 | Request Format (*work in progress*) | Default JSON, Hunyuan-MT, Simple, or Custom |
@@ -149,17 +125,13 @@ It works at two levels:
 - **Inside sentences** — glossary terms found in the text being translated are injected into the prompt as hard hints, so the model keeps proper nouns consistent (e.g. *The Companions* → *同胞団* everywhere). Only matching terms are sent, so a large dictionary is fine.
 - **Whole segments** — when a segment consists *entirely* of a glossary term, the mapping is applied directly and the model is skipped. This is the reliable way to fix short context-free labels that small models mangle — e.g. add `About<TAB>概要` and the nav heading "About" always becomes "概要" instead of the broken "について".
 
-Whole-segment matches take priority over the translation cache, and loading or clearing a glossary wipes the cache (the same source text now translates differently). Models with a fixed prompt format (TranslateGemma, Hunyuan-MT) only get the whole-segment treatment — injecting instruction blocks into their prompts corrupts their output. The built-in PLaMo 3 mode gets terms via the model's native PFML3 glossary instead of instruction blocks. See `examples/` for a sample dictionary.
+Whole-segment matches take priority over the translation cache, and loading or clearing a glossary wipes the cache (the same source text now translates differently). Models with a fixed prompt format (TranslateGemma, Hunyuan-MT) only get the whole-segment treatment — injecting instruction blocks into their prompts corrupts their output. See `examples/` for a sample dictionary.
 
 ## File Structure
 
 ```
 ├── manifest.json      # Extension manifest (MV3)
-├── background.js      # Background script (LLM API, settings, offscreen lifecycle)
-├── offscreen/         # Built-in WebGPU inference module (hachiue + PLaMo 3, bundled)
-│   ├── src/           #   offscreen.js + plamo3-prompt.js (PFML3, unit-tested)
-│   ├── test/          #   node --test unit tests (no GPU required)
-│   └── MODEL-LICENSE.md # PLaMo Community License notice for the downloaded model
+├── background.js      # Background script (LLM API, settings, message routing)
 ├── content.js         # Content script (DOM manipulation)
 ├── popup/
 │   ├── popup.html     # Popup UI
@@ -170,16 +142,9 @@ Whole-segment matches take priority over the translation cache, and loading or c
 
 ## Development
 
-The extension itself is vanilla JavaScript with no build step, but the built-in WebGPU module in `offscreen/` is built with esbuild (its dependencies are pinned and the bundle is committed, so the extension loads unpacked without any tooling):
+Pure vanilla JavaScript — the extension loads unpacked with no build step:
 
-```
-cd offscreen
-npm ci
-npm test        # unit tests (PFML3 builder — no GPU needed)
-npm run build   # rebuild offscreen.bundle.js after changing src/
-```
-
-- Pure vanilla JavaScript for the extension itself
+- No Node.js, npm, bundler, or Docker required
 - Works directly in the browser
 
 ### Debug Logging

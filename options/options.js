@@ -606,172 +606,6 @@ function initModelPicker() {
     modelPicker.init();
 }
 
-// ============================================================================
-// Built-in model (PLaMo 3 Translate on WebGPU) — status, download and delete.
-// ============================================================================
-const builtinEls = {
-    state: document.getElementById('builtinStateLabel'),
-    size: document.getElementById('builtinSizeLabel'),
-    progressWrap: document.getElementById('builtinProgressWrap'),
-    progressFill: document.getElementById('builtinProgressFill'),
-    phaseLabel: document.getElementById('builtinPhaseLabel'),
-    percentLabel: document.getElementById('builtinPercentLabel'),
-    errorLabel: document.getElementById('builtinErrorLabel'),
-    downloadBtn: document.getElementById('builtinDownloadBtn'),
-    deleteBtn: document.getElementById('builtinDeleteBtn'),
-    unsupportedNote: document.getElementById('builtinUnsupportedNote'),
-    modelBox: document.getElementById('builtinModelBox'),
-};
-
-let builtinPollTimer = null;
-
-function fmtBytes(n) {
-    if (n == null || !Number.isFinite(n)) return '—';
-    const mb = n / 1048576;
-    if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
-    if (mb >= 1) return mb.toFixed(1) + ' MB';
-    return (n / 1024).toFixed(0) + ' KB';
-}
-
-async function refreshBuiltinModel() {
-    if (!builtinEls.state) return;
-    if (typeof browserAPI.offscreen === 'undefined') {
-        builtinEls.unsupportedNote.hidden = false;
-        builtinEls.modelBox.hidden = true;
-        return;
-    }
-    builtinEls.unsupportedNote.hidden = true;
-    builtinEls.modelBox.hidden = false;
-    try {
-        const [statusResp, cacheResp] = await Promise.all([
-            browserAPI.runtime.sendMessage({ type: 'BUILTIN_MODEL_STATUS' }).catch(() => null),
-            browserAPI.runtime.sendMessage({ type: 'BUILTIN_MODEL_CACHE_INFO' }).catch(() => null),
-        ]);
-        renderBuiltinModel(statusResp?.status ?? null, cacheResp?.cache ?? null);
-    } catch (e) {
-        // Render whatever we know rather than nothing.
-        renderBuiltinModel(null, null);
-    }
-}
-
-function renderBuiltinModel(status, cache) {
-    const state = status?.state || 'unloaded';
-    const cached = cache ? cache.cached : null;
-    const sizeBytes = cache ? cache.sizeBytes : null;
-    const lastError = status?.lastError || null;
-    const progress = status?.progress || null;
-
-    // Error line
-    if (lastError) {
-        builtinEls.errorLabel.hidden = false;
-        builtinEls.errorLabel.textContent = lastError;
-    } else {
-        builtinEls.errorLabel.hidden = true;
-    }
-
-    // State label
-    let stateText, stateClass;
-    if (state === 'loading') { stateText = t('builtin.stateLoading'); stateClass = 'is-loading'; }
-    else if (state === 'ready') { stateText = t('builtin.stateReady'); stateClass = 'is-ready'; }
-    else if (state === 'error') { stateText = t('builtin.stateError'); stateClass = 'is-error'; }
-    else if (cached === true) { stateText = t('builtin.stateCached'); stateClass = 'is-ready'; }
-    else if (cached === null || cached === undefined) { stateText = t('builtin.stateUnknown'); stateClass = ''; }
-    else { stateText = t('builtin.stateUndownloaded'); stateClass = ''; }
-    builtinEls.state.textContent = stateText;
-    builtinEls.state.className = 'builtin-state-value' + (stateClass ? ' ' + stateClass : '');
-
-    // Downloaded size
-    if ((cached === true && sizeBytes != null) || state === 'ready') {
-        builtinEls.size.textContent = fmtBytes(sizeBytes);
-    } else if (sizeBytes) {
-        builtinEls.size.textContent = fmtBytes(sizeBytes);
-    } else {
-        builtinEls.size.textContent = t('builtin.sizeNone');
-    }
-
-    // Progress row (visible while loading)
-    const loading = state === 'loading';
-    builtinEls.progressWrap.hidden = !loading;
-    if (loading && progress && progress.totalBytes > 0) {
-        const pct = Math.min(99, Math.floor((progress.loadedBytes / progress.totalBytes) * 100));
-        builtinEls.progressFill.style.width = pct + '%';
-        builtinEls.phaseLabel.textContent = t('builtin.downloading', {
-            loaded: fmtBytes(progress.loadedBytes),
-            total: fmtBytes(progress.totalBytes),
-        });
-        builtinEls.percentLabel.textContent = pct + '%';
-    } else if (loading) {
-        builtinEls.progressFill.style.width = '0%';
-        builtinEls.phaseLabel.textContent = t('builtin.stateLoading');
-        builtinEls.percentLabel.textContent = '';
-    } else {
-        builtinEls.progressFill.style.width = '0%';
-    }
-
-    // Buttons
-    const isLoading = state === 'loading';
-    builtinEls.downloadBtn.disabled = isLoading;
-    builtinEls.downloadBtn.textContent = cached ? t('builtin.redownloadBtn') : t('builtin.downloadBtn');
-    builtinEls.deleteBtn.disabled = isLoading || (cached === false && state !== 'ready');
-}
-
-function startBuiltinPolling() {
-    stopBuiltinPolling();
-    builtinPollTimer = setInterval(() => {
-        // Cheap check runs forever; the heavy render only for visible state changes.
-        refreshBuiltinModel();
-    }, 750);
-}
-
-function stopBuiltinPolling() {
-    if (builtinPollTimer) { clearInterval(builtinPollTimer); builtinPollTimer = null; }
-}
-
-async function builtinDownload() {
-    builtinEls.errorLabel.hidden = true;
-    builtinEls.downloadBtn.disabled = true;
-    builtinEls.progressWrap.hidden = false;
-    builtinEls.progressFill.style.width = '0%';
-    builtinEls.phaseLabel.textContent = t('builtin.stateLoading');
-    builtinEls.percentLabel.textContent = '';
-    // Fire and forget — progress comes through the polling loop.
-    browserAPI.runtime.sendMessage({ type: 'BUILTIN_MODEL_LOAD' })
-        .then(resp => {
-            if (resp && resp.ok === false) {
-                builtinEls.errorLabel.hidden = false;
-                builtinEls.errorLabel.textContent = t('builtin.downloadFailed') + (resp.error || '');
-            } else {
-                showToast(t('builtin.downloadDone'));
-            }
-        })
-        .catch(e => {
-            builtinEls.errorLabel.hidden = false;
-            builtinEls.errorLabel.textContent = t('builtin.downloadFailed') + ((e && e.message) || String(e));
-        })
-        .finally(() => {
-            refreshBuiltinModel();
-        });
-}
-
-async function builtinDelete() {
-    if (!window.confirm(t('builtin.deleteConfirm'))) return;
-    builtinEls.deleteBtn.disabled = true;
-    try {
-        const resp = await browserAPI.runtime.sendMessage({ type: 'BUILTIN_MODEL_DELETE' });
-        if (resp && resp.ok === false) throw new Error(resp.error || 'unknown error');
-        showToast(t('builtin.deleteDone'));
-    } catch (e) {
-        console.error('Failed to delete model:', e);
-    } finally {
-        await refreshBuiltinModel();
-    }
-}
-
-if (builtinEls.downloadBtn) {
-    builtinEls.downloadBtn.addEventListener('click', builtinDownload);
-    builtinEls.deleteBtn.addEventListener('click', builtinDelete);
-    startBuiltinPolling();
-}
 
 // ============================================================================
 // Simple-select pickers: provider, source language, request format, cache
@@ -789,16 +623,11 @@ const providerPicker = createSimpleSelect({
         list: elements.providerList,
     },
     getOptions: () => {
-        const opts = [
+        return [
             { value: 'auto', label: t('provider.auto') },
             { value: 'ollama', label: t('provider.ollama') },
             { value: 'lmstudio', label: t('provider.lmstudio') },
         ];
-        // Built-in engine needs the Chrome/Edge offscreen API + WebGPU.
-        if (typeof browserAPI.offscreen !== 'undefined') {
-            opts.push({ value: 'builtin-webgpu', label: t('provider.builtin') });
-        }
-        return opts;
     },
     initialValue: 'auto',
 });
@@ -1026,7 +855,6 @@ async function init() {
     initPromptEditors(); // Initialize editors
     await loadModels();
     setupEventListeners();
-    refreshBuiltinModel();
     await refreshGlossaryStatus();
     initSidebarScrollspy();
     refreshCacheCount();
@@ -1036,7 +864,7 @@ async function init() {
     // the cached-entry count whenever the tab is re-focused (e.g. after translating
     // a page in another tab) so it doesn't show a stale value.
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) { refreshCacheCount(); refreshBuiltinModel(); }
+        if (!document.hidden) { refreshCacheCount(); }
     });
 }
 
@@ -1209,8 +1037,8 @@ function updateFormatDescription(format) {
     if (elements.systemPrompt && elements.userPrompt) {
         const draft = promptDrafts[format];
         const override = currentSettings.customPrompts && currentSettings.customPrompts[format];
-        const builtin = PROMPT_TEMPLATES[format] || PROMPT_TEMPLATES.default;
-        const source = draft || override || builtin;
+        const fallback = PROMPT_TEMPLATES[format] || PROMPT_TEMPLATES.default;
+        const source = draft || override || fallback;
         elements.systemPrompt.value = source.system || '';
         elements.userPrompt.value = source.user || '';
         elements.systemPrompt.dispatchEvent(new Event('input'));

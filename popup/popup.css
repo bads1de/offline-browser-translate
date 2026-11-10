@@ -206,52 +206,6 @@ header h1 {
   line-height: 1.4;
 }
 
-/* Built-in model status line (only shown when Provider = built-in) */
-.builtin-model-line {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 10px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--bg-tertiary);
-  border-radius: var(--border-radius);
-}
-
-.builtin-model-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.builtin-model-title span:last-child {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.builtin-model-track {
-  height: 6px;
-  background: var(--bg-tertiary, rgba(255,255,255,0.06));
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.builtin-model-track .progress-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
-  border-radius: 999px;
-  transition: width 0.2s ease;
-}
-
-.builtin-model-size {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin: 0;
-}
-
 .ignored-site-note {
   color: var(--warning);
   margin-top: 4px;
@@ -914,12 +868,6 @@ textarea.highlight-vars {
   background: rgba(214, 153, 182, 0.12);
   color: var(--purple);
   border: 1px solid rgba(214, 153, 182, 0.3);
-}
-
-.model-provider-badge--builtin-webgpu {
-  background: rgba(212, 175, 55, 0.14);
-  color: var(--gold, #d4af37);
-  border: 1px solid rgba(212, 175, 55, 0.35);
 }
 
 /* Disabled model trigger (loading / error states) */

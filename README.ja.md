@@ -4,14 +4,14 @@
 
 **🌐 [English README](README.md)**
 
-プライバシー重視のブラウザ拡張機能で、ローカル LLM を使ってウェブページを翻訳します。ブラウザ内で完全に動作する内蔵の PLaMo 3 Translate モデル（WebGPU）か、Ollama / LMStudio 経由で利用できます。**あなたのデータがマシンの外に出ることはありません。**
+プライバシー重視のブラウザ拡張機能で、ローカル LLM を使ってウェブページを翻訳します。Ollama / LMStudio、または llama.cpp の `llama-server` などの OpenAI 互換サーバー経由で利用できます。**あなたのデータがマシンの外に出ることはありません。**
 
 [![Get the Add-on](https://extensionworkshop.com/assets/img/documentation/publish/get-the-addon-178x60px.dad84b42.png)](https://addons.mozilla.org/en-GB/firefox/addon/local-llm-translator/)
 
 ## 機能
 
-- 🔒 **100% プライベート** — すべての翻訳はローカルマシン上で行われます。内蔵 WebGPU モデル、または Ollama / LMStudio 経由を選べます
-- 🧩 **セットアップ不要（内蔵モデル）** — サーバーもアカウントも Docker も不要。Chrome / Edge では PLaMo 3 Translate 0.8B モデルがブラウザ内部で翻訳を実行します。モデル（約546 MB）は初回使用時に一度だけダウンロードされ、その後はローカルキャッシュから約1〜2秒で読み込まれます
+- 🔒 **100% プライベート** — すべての翻訳はローカルマシン上で行われます。Ollama / LMStudio / llama.cpp 経由
+- 🦙 **自分でモデルを動かす** — ローカル LLM サーバーを一度インストールして翻訳モデルを読み込めば使えます。llama.cpp の `llama-server`、Ollama、LMStudio のいずれでも動作します
 - 🎯 **スマートな優先順位付け** — 表示中のコンテンツや見出しを優先して翻訳します
 - 🌍 **多言語対応** — たくさんの言語に対応 :3
 - ⚡ **翻訳キャッシュ** — 任意機能：同じテキストを一度だけ翻訳して再利用します（フォーラムなどに便利）。デフォルトはオフ。ローカルに保存され、セッションのみ／永続のモードを選べます
@@ -20,35 +20,23 @@
 
 ## 必要要件
 
-**内蔵モデルを使う場合**（Chrome / Edge のみ）— インストール不要：
-
-- **Chrome または Edge** で WebGPU をサポートしていること（ハードウェアアクセラレーション有効）。サーバーもアカウントも不要です。内蔵モードを初めて使用すると、PLaMo 3 Translate 0.8B モデル（約546 MB）が Hugging Face から一度だけダウンロードされ、ディスク（OPFS）にキャッシュされます
-
-**または**、以下をローカルで動かす場合（Firefox を含むすべてのブラウザで動作）：
+以下をローカルで動かしてください：
 
 - **[Ollama](https://ollama.ai/)**（デフォルト: `http://localhost:11434`）
 - **[LMStudio](https://lmstudio.ai/)**（デフォルト: `http://localhost:1234`）
-- **その他の OpenAI 互換サーバー** — [llama.cpp](https://github.com/ggml-org/llama.cpp) の `llama-server`、[vLLM](https://github.com/vllm-project/vllm) など。サーバーのベース URL（例: `http://localhost:8080`）を **LMStudio / OpenAI-compatible URL** フィールドに入力してください。末尾の `/v1` は許容され、自動的に取り除かれます
+- **その他の OpenAI 互換サーバー** — [llama.cpp](https://github.com/ggml-org/llama.cpp) の `llama-server`、[vLLM](https://github.com/vllm-project/vllm) など。サーバーのベース URL（例: `http://localhost:8080`）を **LMStudio / OpenAI-compatible URL** フィールドに入力してください。末尾の `/v1` は許容され、自動的に取り除かれます。いちばん手軽な選択肢は [Llama Windows (llama.app)](https://llama.app/) です — **LMStudio / OpenAI-compatible URL** フィールドに `http://127.0.0.1:9931`（デフォルトポート）を入力してください
 
-翻訳に対応したモデル（例: `TranslateGemma`、`tencent.hunyuan-mt`、`qwen3` など）を読み込んでおく必要があります
+翻訳に対応したモデル（例: `pfnet/plamo-3-translate-0.8b-GGUF`（llama.cpp）、`TranslateGemma`、`tencent.hunyuan-mt`、`qwen3` など）を読み込んだ上で、Provider は **Auto-detect（自動検出）** を選択すれば、上記2つのエンドポイントのどちらかが動いていれば自動で使われます
 
 ## インストール
 
 ### Firefox / Mullvad Browser
 
-内蔵 WebGPU モードは Chrome / Edge 専用の `offscreen` 権限を必要とし、Firefox では読み込み時に拒否されます。そのため、リポジトリには `manifest.firefox.json` が同梱されています。これは `manifest.json` から `offscreen` 権限だけを除いたものです（`alarms` はどちらでも問題ありません）。この2つは同期させてください。許される差分は `offscreen` のエントリのみです。
+1. `about:debugging#/runtime/this-firefox` を開きます
+2. **一時的なアドオンを読み込む（Load Temporary Add-on）** をクリックします
+3. `manifest.json` ファイルを選択します
 
-1. Firefox 用マニフェストを配置します：
-   ```powershell
-   Copy-Item manifest.firefox.json manifest.json   # Windows / PowerShell
-   # cp manifest.firefox.json manifest.json          # macOS / Linux
-   ```
-   （これは作業ツリー内の `manifest.json` を上書きします。元に戻すには `git checkout -- manifest.json`。Chrome / Edge をお使いの方は元のままにしてください。）
-2. `about:debugging#/runtime/this-firefox` を開きます
-3. **一時的なアドオンを読み込む（Load Temporary Add-on）** をクリックします
-4. `manifest.json` ファイルを選択します
-
-AMO（Firefox Add-ons）に提出する場合は、`manifest.firefox.json` を `manifest.json` として zip 化してください。内蔵 WebGPU モードはそちらでも Chrome / Edge 専用のままです。Firefox のユーザーは Chrome 版のデフォルトと同様に外部サーバーモードを利用します。
+AMO（Firefox Add-ons）に提出する場合は、拡張機能フォルダをそのまま zip にして `manifest.json` を同梱してください（Firefox 向けの gecko 設定を含む状態のまま出荷します）。Chrome 専用の API は使っていないため、同じパッケージが Chrome / Edge と Firefox の両方で読み込めます。
 
 ### Chrome / Chromium
 1. `chrome://extensions` を開きます
@@ -56,7 +44,7 @@ AMO（Firefox Add-ons）に提出する場合は、`manifest.firefox.json` を `
 3. **パッケージ化されていない拡張機能を読み込む（Load unpacked）** をクリックします
 4. 拡張機能のフォルダを選択します
 
-> **ビルドは不要です。** `offscreen/` 内の内蔵 WebGPU モジュールはビルド済みバンドル（`offscreen/offscreen.bundle.js`）としてコミットされているため、`git clone` やブランチの ZIP をそのまま読み込んで動作します。Node.js・npm・バンドラー・Docker は不要です。（`offscreen/` 内のモジュールのソースを自分で変更した場合のみ `npm ci && npm run build` が必要です。）
+> **ビルドは不要です。** 拡張機能は純粋なバニラ JavaScript で提供されています。Node.js・npm・バンドラー・Docker は不要です。
 
 **近日公開予定:** Chrome ウェブストアでの拡張機能
 
@@ -79,23 +67,11 @@ AMO（Firefox Add-ons）に提出する場合は、`manifest.firefox.json` を `
 - 進捗パーセンテージ付きでバッチ翻訳します
 - 新しく読み込まれたコンテンツ（無限スクロール）を自動翻訳します
 
-### 内蔵 WebGPU モード（Chrome / Edge）
-
-1. 拡張機能のアイコンをクリックします
-2. **Provider** を **Built-in (PLaMo 3 Translate 0.8B / WebGPU)** に設定します（設定またはポップアップから）
-3. **Translate Page（ページを翻訳）** をクリックします
-
-初回使用時にモデルが一度だけダウンロードされます（約546 MB、1回のみ）。ページ上のウィジェット、ポップアップ、および オプション → **Built-in Model** にダウンロード進捗が表示されます。その後はローカル（OPFS）にキャッシュされ、約1〜2秒で読み込まれます。翻訳せずに5分経過すると、VRAM を解放するためにモデルはアンロードされます。次回の翻訳時にキャッシュから再読み込みされます。内蔵モデルは Hugging Face で配布されている PFN PLaMo 3 Translate の重みと同一のもので、拡張機能には同梱されていません。モデルの利用は PLaMo Community License に従います：個人・学術利用は無料、商用利用には PFN への事前登録が必要です（`offscreen/MODEL-LICENSE.md` を参照）。
-
-ダウンロード済みモデルはいつでも **Options（オプション）→ Built-in Model → Delete model** から削除できます（約546 MB が解放されます。あとから再ダウンロードも可能です）。内蔵モデルのセクションには、現在のダウンロード状態、ダウンロード済みサイズ、ライセンス条項も表示されます。
-
-このモードは Firefox では利用できません（offscreen API が必要なため）。Firefox では外部サーバーモードがデフォルトです。
-
 ## プライバシー
 
 この拡張機能はプライバシーを重視して設計されています：
 
-- ✅ `localhost` にのみ接続します。**内蔵モデルをオプトインした場合を除き**、外部ネットワークへのリクエストは発生しません。内蔵モデルは初回使用時に一度だけ Hugging Face からダウンロードされ、ページのテキストを外部に送信することは一切ありません
+- ✅ `localhost` にのみ接続します。外部ネットワークへのリクエストは一切発生しません
 - ✅ アナリティクスやトラッキングなし
 - ✅ データ収集なし
 - ✅ 必要最小限の権限（`localhost` のホスト権限のみ）
@@ -107,8 +83,8 @@ AMO（Firefox Add-ons）に提出する場合は、`manifest.firefox.json` を `
 
 | 設定 | 説明 |
 |---------|-------------|
-| Provider | 自動検出、Ollama のみ、LMStudio のみ、または Built-in（Chrome / Edge のみ） |
-| URLs | Ollama / LMStudio のカスタムエンドポイント（Built-in モードでは非表示） |
+| Provider | 自動検出、Ollama のみ、または LMStudio / OpenAI 互換のみ |
+| URLs | Ollama / LMStudio のカスタムエンドポイント |
 | Max tokens/items per batch | バッチサイズの制御 |
 | Temperature | モデルの創造性（低いほど一貫性が高くなります） |
 | Request Format（*作業中*） | デフォルト JSON、Hunyuan-MT、Simple、または Custom |
@@ -149,17 +125,13 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 - **文の中** — 翻訳対象のテキスト内で見つかった用語集の用語が、ハードヒントとしてプロンプトに注入されます。これによりモデルは固有名詞の訳を一貫させます（例: *The Companions* → *同胞団* をどこでも同じ訳に）。マッチした用語だけが送信されるため、大きな辞書でも問題ありません。
 - **セグメント全体** — セグメントが用語集の用語*のみ*で構成される場合、モデルをバイパスしてマッピングが直接適用されます。これは、コンテキストのない短いラベルを小さなモデルが壊してしまうのを防ぐ確実な方法です。たとえば `About<TAB>概要` を追加しておけば、ナビ見出しの "About" は常に "概要" になります（壊れた "について" にはなりません）。
 
-セグメント全体のマッチは翻訳キャッシュより優先されます。また、用語集を読み込んだりクリアしたりするとキャッシュが消去されます（同じソーステキストが異なる訳になりうるため）。固定プロンプト形式のモデル（TranslateGemma、Hunyuan-MT）ではセグメント全体の処理のみ適用されます。指示ブロックをプロンプトに注入すると出力が壊れるためです。内蔵の PLaMo 3 モードでは、指示ブロックではなくモデルネイティブの PFML3 用語集経由で用語が渡されます。サンプル辞書は `examples/` を参照してください。
+セグメント全体のマッチは翻訳キャッシュより優先されます。また、用語集を読み込んだりクリアしたりするとキャッシュが消去されます（同じソーステキストが異なる訳になりうるため）。固定プロンプト形式のモデル（TranslateGemma、Hunyuan-MT）ではセグメント全体の処理のみ適用されます。指示ブロックをプロンプトに注入すると出力が壊れるためです。サンプル辞書は `examples/` を参照してください。
 
 ## ファイル構成
 
 ```
 ├── manifest.json      # 拡張機能マニフェスト (MV3)
-├── background.js      # バックグラウンドスクリプト（LLM API、設定、offscreen のライフサイクル）
-├── offscreen/         # 内蔵 WebGPU 推論モジュール（hachiue + PLaMo 3、バンドル済み）
-│   ├── src/           #   offscreen.js + plamo3-prompt.js (PFML3、ユニットテスト済み)
-│   ├── test/          #   node --test ユニットテスト（GPU 不要）
-│   └── MODEL-LICENSE.md # ダウンロードされるモデルの PLaMo Community License 通知
+├── background.js      # バックグラウンドスクリプト（LLM API、設定、メッセージルーティング）
 ├── content.js         # コンテンツスクリプト（DOM 操作）
 ├── popup/
 │   ├── popup.html     # ポップアップ UI
@@ -170,16 +142,9 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 
 ## 開発
 
-拡張機能本体はビルド不要のバニラ JavaScript ですが、`offscreen/` 内の内蔵 WebGPU モジュールは esbuild でビルドされます（依存関係はピン留めされ、バンドルはコミット済みのため、拡張機能はツールなしでそのまま読み込めます）：
+拡張機能は純粋なバニラ JavaScript です。ビルドは不要です：
 
-```
-cd offscreen
-npm ci
-npm test        # ユニットテスト（PFML3 ビルダー — GPU 不要）
-npm run build   # src/ を変更した後に offscreen.bundle.js を再ビルド
-```
-
-- 拡張機能本体は純粋なバニラ JavaScript
+- Node.js・npm・バンドラー・Docker は不要です
 - ブラウザ上で直接動作します
 
 ### デバッグログ
