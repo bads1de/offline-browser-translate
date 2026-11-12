@@ -103,91 +103,10 @@
       </div>
     </section>
 
-    <section class="settings-toggle">
-      <button id="toggleAdvanced" class="toggle-btn">
-        <span data-i18n="adv.quickSettings">Quick settings</span>
-        <span class="toggle-arrow">▼</span>
-      </button>
-    </section>
-
-    <section class="advanced-settings" id="advancedSection" hidden>
-      <div class="form-group floating-btn-group">
-        <div class="checkbox-row">
-          <input type="checkbox" id="floatingButton">
-          <label for="floatingButton" data-i18n="adv.floatingLabel">Floating translate button</label>
-        </div>
-        <p class="floating-btn-hint"><span data-i18n="adv.floatingHint">Shows a translate button next to selected
-            text.</span> <strong data-i18n="adv.floatingHintReq">Requires permission to run
-            on all websites.</strong></p>
-      </div>
-
-      <div class="form-group floating-btn-group">
-        <div class="checkbox-row">
-          <input type="checkbox" id="autoTranslatePages">
-          <label for="autoTranslatePages" data-i18n="adv.autoLabel">Auto-translate pages on load</label>
-        </div>
-        <p class="floating-btn-hint"><strong data-i18n="adv.floatingHintReq">Requires permission to run on all
-            websites.</strong> <span data-i18n="adv.autoHint">Manage language/site
-            exceptions in</span> <button type="button" id="autoTranslateOptionsLink"
-            class="text-btn inline-link" data-i18n="adv.settingsLink">Settings</button><span
-            data-i18n="adv.autoHintEnd">.</span></p>
-        <p class="floating-btn-hint ignored-site-note" id="ignoredSiteNote" hidden>
-          <span data-i18n="adv.ignoreNote">This site is on the ignore list, so it won't auto-translate.</span>
-          <button type="button" id="unignoreSiteBtn" class="text-btn inline-link"
-            data-i18n="adv.unignore">Un-ignore it</button>
-        </p>
-      </div>
-
-      <hr class="section-divider">
-
-      <div class="form-group">
-        <label for="providerSelect" data-i18n="provider.label">Provider</label>
-        <select id="providerSelect">
-          <option value="auto" data-i18n="provider.auto">Auto-detect</option>
-          <option value="ollama" data-i18n="provider.ollama">Ollama</option>
-          <option value="lmstudio" data-i18n="provider.lmstudio">LMStudio / OpenAI-compatible</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="ollamaUrl">Ollama URL</label>
-        <input type="text" id="ollamaUrl" placeholder="http://localhost:11434">
-      </div>
-
-      <div class="form-group">
-        <label for="lmstudioUrl" data-i18n="lmstudioUrl.label">LMStudio / OpenAI-compatible URL (llama.cpp, vLLM…)</label>
-        <input type="text" id="lmstudioUrl" placeholder="http://localhost:1234">
-      </div>
-
-      <div class="form-group">
-        <label for="cacheMode"><span data-i18n="cache.label">Translation cache</span> <span class="new-badge"
-            id="cacheNewBadge" hidden data-i18n="cache.newBadge">New</span></label>
-        <select id="cacheMode">
-          <option value="off" data-i18n="cache.mode.off">Don't cache</option>
-          <option value="session" data-i18n="cache.mode.session">Until I close the browser</option>
-          <option value="persistent" data-i18n="cache.mode.persistent">Keep across sessions</option>
-        </select>
-        <p class="floating-btn-hint" id="cacheBackendWarning" hidden data-i18n="cache.backendWarning">⚠️ This browser
-          doesn't support keeping the cache
-          across sessions.</p>
-        <button id="clearCache" class="text-btn" title="Delete all cached translations"
-          data-i18n-title="cache.clearTitle"><span
-            data-i18n="cache.clearPrefix">Clear cache (</span><span id="cacheCount">…</span><span
-            data-i18n="cache.clearSuffix">)</span></button>
-      </div>
-
-      <div class="button-row">
-        <button id="saveSettings" class="primary-btn small" data-i18n="save.label">Save Settings</button>
-        <button id="openOptions" class="secondary-btn small" title="Open full settings page"
-          data-i18n-title="openFullSettings" data-i18n="moreSettings">⚙️ More Settings</button>
-      </div>
-      <button id="resetSettings" class="text-btn" data-i18n="reset.label">Reset to defaults</button>
-    </section>
-
     <!-- Toast Notification -->
     <div id="toast" class="toast">
       <span class="toast-icon">✅</span>
-      <span class="toast-message" data-i18n="toast.saved">Settings saved!</span>
+      <span class="toast-message"></span>
     </div>
 
     <footer>

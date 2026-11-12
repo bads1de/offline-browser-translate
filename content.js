@@ -677,9 +677,10 @@ function getWidget() {
                 type: 'ADD_AUTO_TRANSLATE_NEVER_SITE',
                 hostname: location.hostname
             });
-            // Un-ignoring a site lives in the popup's Quick Settings instead
-            // (plenty of room there, and no translation to resume anyway - the
-            // page needs a reload regardless once the site's un-ignored).
+            // Un-ignoring a site lives in the Settings page's Auto-Translate
+            // section instead (plenty of room there, and no translation to
+            // resume anyway - the page needs a reload regardless once the
+            // site's un-ignored).
             showToast(`${location.hostname} won't be auto-translated`);
         } catch (e) {
             showToast('Could not save the site preference', true);

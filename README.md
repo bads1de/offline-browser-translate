@@ -79,7 +79,7 @@ This extension is designed to be privacy-focused:
 
 ## Settings
 
-Click **Advanced Settings** to configure:
+Open the full **Settings** page (the gear icon in the popup header) to configure:
 
 | Setting | Description |
 |---------|-------------|
@@ -105,7 +105,7 @@ This needs permission to run on all websites, since the extension has to be pres
 
 ## Translation Cache
 
-To avoid re-translating the same text over and over (forum boilerplate, menus, usernames, repeated phrases), translations can be cached locally and reused — both later on the same page and across other pages. It is **off by default**; enable it in Options or the popup's Advanced Settings.
+To avoid re-translating the same text over and over (forum boilerplate, menus, usernames, repeated phrases), translations can be cached locally and reused — both later on the same page and across other pages. It is **off by default**; enable it in Options.
 
 - **Modes (Options → Translation Cache):**
   - **Don't cache** (default) — every segment is translated fresh.

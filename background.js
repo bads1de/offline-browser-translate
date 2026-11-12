@@ -1503,21 +1503,6 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     break;
                 }
 
-                case 'REMOVE_AUTO_TRANSLATE_NEVER_SITE': {
-                    // Sent from the popup's "Un-ignore it" link.
-                    const host = typeof message.hostname === 'string' ? message.hostname.trim().toLowerCase() : '';
-                    if (!host) {
-                        sendResponse({ ok: false });
-                        break;
-                    }
-                    const current = await getSettings();
-                    const sites = (Array.isArray(current.autoTranslateNeverSites) ? current.autoTranslateNeverSites : [])
-                        .filter(s => s !== host);
-                    await saveSettings({ autoTranslateNeverSites: sites });
-                    sendResponse({ ok: true, sites });
-                    break;
-                }
-
                 case 'GET_MODEL_STATE': {
                     if (!settings.selectedModel) { sendResponse({ state: null }); break; }
                     const provider = await detectModelProvider(settings.selectedModel, settings);

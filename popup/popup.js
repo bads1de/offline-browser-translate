@@ -58,25 +58,7 @@ const elements = {
     translateBtn: document.getElementById('translateBtn'),
     cancelBtn: document.getElementById('cancelBtn'),
     restoreBtn: document.getElementById('restoreBtn'),
-    toggleAdvanced: document.getElementById('toggleAdvanced'),
-    advancedSection: document.getElementById('advancedSection'),
-    providerSelect: document.getElementById('providerSelect'),
-    ollamaUrl: document.getElementById('ollamaUrl'),
-    lmstudioUrl: document.getElementById('lmstudioUrl'),
-    cacheMode: document.getElementById('cacheMode'),
-    cacheBackendWarning: document.getElementById('cacheBackendWarning'),
-    cacheNewBadge: document.getElementById('cacheNewBadge'),
-    clearCache: document.getElementById('clearCache'),
-    cacheCount: document.getElementById('cacheCount'),
-    floatingButton: document.getElementById('floatingButton'),
-    autoTranslatePages: document.getElementById('autoTranslatePages'),
-    autoTranslateOptionsLink: document.getElementById('autoTranslateOptionsLink'),
-    ignoredSiteNote: document.getElementById('ignoredSiteNote'),
-    unignoreSiteBtn: document.getElementById('unignoreSiteBtn'),
-    saveSettings: document.getElementById('saveSettings'),
-    openOptions: document.getElementById('openOptions'),
     openOptionsHeader: document.getElementById('openOptionsHeader'),
-    resetSettings: document.getElementById('resetSettings'),
     toast: document.getElementById('toast')
 };
 
@@ -205,59 +187,10 @@ async function init() {
     refreshI18nDynamic();
     applySettingsToUI();
     setupEventListeners();
-    refreshCacheCount();
-    refreshCacheBackend();
-    initCacheNewBadge();
-    updateIgnoredSiteIndicator();
     await checkProviders();
     await loadModels();
     await checkTranslationStatus();
     await detectPageLanguage();
-}
-
-// Show a small "New" badge on the cache control until the user opens the
-// Advanced Settings (where it lives) for the first time.
-const CACHE_BADGE_SEEN_KEY = 'cacheBadgeSeen';
-function initCacheNewBadge() {
-    if (!elements.cacheNewBadge) return;
-    let seen = false;
-    try { seen = localStorage.getItem(CACHE_BADGE_SEEN_KEY) === '1'; } catch (e) { /* ignore */ }
-    elements.cacheNewBadge.hidden = seen;
-}
-function markCacheBadgeSeen() {
-    // Persist that the user has now opened Advanced Settings, but keep the badge
-    // visible for the rest of this session so they actually notice it. It won't
-    // show again the next time the popup is opened.
-    try { localStorage.setItem(CACHE_BADGE_SEEN_KEY, '1'); } catch (e) { /* ignore */ }
-}
-
-// Show how many translations are currently cached on the Clear-cache button.
-async function refreshCacheCount() {
-    if (!elements.cacheCount) return;
-    try {
-        const res = await browserAPI.runtime.sendMessage({ type: 'CACHE_COUNT' });
-        elements.cacheCount.textContent = (res && typeof res.count === 'number') ? res.count.toLocaleString() : '0';
-    } catch (e) {
-        elements.cacheCount.textContent = '0';
-    }
-}
-
-// Grey out "Keep across sessions" when the browser blocks IndexedDB (e.g. Mullvad),
-// since persistence can't work there; the in-memory session cache still does.
-async function refreshCacheBackend() {
-    if (!elements.cacheMode) return;
-    let persistent = true;
-    try {
-        const res = await browserAPI.runtime.sendMessage({ type: 'CACHE_BACKEND' });
-        persistent = !(res && res.persistent === false);
-    } catch (e) { /* assume available on error */ }
-
-    const opt = elements.cacheMode.querySelector('option[value="persistent"]');
-    if (opt) opt.disabled = !persistent;
-    if (elements.cacheBackendWarning) elements.cacheBackendWarning.hidden = persistent;
-    if (!persistent && elements.cacheMode.value === 'persistent') {
-        elements.cacheMode.value = 'session';
-    }
 }
 
 // ============================================================================
@@ -607,49 +540,11 @@ async function loadSettings() {
     }
 }
 
-let currentTabHostname = null;
-// Set by updateIgnoredSiteIndicator() to the actual never-list entry that
-// matched the tab (which may be a parent domain, e.g. "example.com" for a
-// tab on "news.example.com") - the un-ignore handler must remove THIS, not
-// the tab's own hostname, or removal silently no-ops for subdomain matches.
-let matchedNeverSite = null;
-
-// Surfaces a note (and un-ignore shortcut) when the active tab's site is on
-// the auto-translate never-list - people forget they clicked "Ignore site"
-// on the page widget, then wonder why auto-translate stopped working there.
-async function updateIgnoredSiteIndicator() {
-    if (!elements.ignoredSiteNote) return;
-    currentTabHostname = null;
-    matchedNeverSite = null;
-    try {
-        const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
-        if (tab && tab.url) currentTabHostname = new URL(tab.url).hostname.toLowerCase();
-    } catch (e) { /* non-http tab (chrome://, etc.) - leave hostname null */ }
-
-    if (!currentTabHostname) {
-        elements.ignoredSiteNote.hidden = true;
-        return;
-    }
-
-    const neverSites = Array.isArray(currentSettings.autoTranslateNeverSites) ? currentSettings.autoTranslateNeverSites : [];
-    matchedNeverSite = neverSites.find(entry => {
-        const site = String(entry || '').trim().toLowerCase();
-        return site && (currentTabHostname === site || currentTabHostname.endsWith('.' + site));
-    }) || null;
-    elements.ignoredSiteNote.hidden = !matchedNeverSite;
-}
-
 // Apply settings to UI
 function applySettingsToUI() {
     langPicker.setPinned(currentSettings.pinnedLanguages || []);
     langPicker.setValue(currentSettings.targetLanguage);
     modelPicker.setPinned(currentSettings.pinnedModels || []);
-    elements.providerSelect.value = currentSettings.provider;
-    elements.ollamaUrl.value = currentSettings.ollamaUrl;
-    elements.lmstudioUrl.value = currentSettings.lmstudioUrl;
-    if (elements.cacheMode) elements.cacheMode.value = currentSettings.cacheMode || 'off';
-    if (elements.floatingButton) elements.floatingButton.checked = !!currentSettings.floatingButton;
-    if (elements.autoTranslatePages) elements.autoTranslatePages.checked = !!currentSettings.autoTranslatePages;
 
     // Restore source language override
     if (elements.sourceLangOverride && currentSettings.sourceLanguage) {
@@ -853,18 +748,14 @@ async function loadModels(forceRefresh = false) {
 async function saveCurrentSettings() {
     currentSettings = {
         ...currentSettings,
-        provider: elements.providerSelect.value,
-        ollamaUrl: elements.ollamaUrl.value,
-        lmstudioUrl: elements.lmstudioUrl.value,
         selectedModel: modelPicker.getValue(),
         pinnedModels: [...modelPicker.pinned],
         targetLanguage: langPicker.getValue(),
         pinnedLanguages: langPicker.pinned,
-        cacheMode: elements.cacheMode ? elements.cacheMode.value : 'off',
         // Save the source language override preference
         sourceLanguage: elements.sourceLangOverride ? elements.sourceLangOverride.value : 'auto'
-        // Request format, structured-output, batch/temperature tuning, glow and custom
-        // prompts are managed in the full Settings page; we omit them here so the
+        // Provider, connection URLs, cache, floating button and auto-translate
+        // are managed in the full Settings page; we omit them here so the
         // background merge keeps whatever was configured there.
     };
 
@@ -1022,7 +913,6 @@ function setupEventListeners() {
     browserAPI.runtime.onMessage.addListener((message) => {
         if (message && message.type === 'TRANSLATION_COMPLETE') {
             resetTranslateButton();
-            refreshCacheCount();
         }
     });
 
@@ -1041,125 +931,10 @@ function setupEventListeners() {
         await loadModels(true); // Force refresh, bypass cache
     });
 
-    // Provider selection changes apply immediately (the dropdown previously
-    // only took effect as a side effect of unrelated saves).
-    if (elements.providerSelect) {
-        elements.providerSelect.addEventListener('change', async () => {
-            await saveCurrentSettings();
-            updateProviderStatusUI();
-            loadModels(true); // refresh the model list for the new provider
-        });
-    }
-
-    // Toggle advanced settings
-    elements.toggleAdvanced.addEventListener('click', () => {
-        const isHidden = elements.advancedSection.hidden;
-        elements.advancedSection.hidden = !isHidden;
-        elements.toggleAdvanced.classList.toggle('active', !isHidden);
-        // Opening Advanced Settings counts as "seeing" the new cache option.
-        if (isHidden) markCacheBadgeSeen();
-    });
-
-    // Floating button toggle — permission required to enable
-    if (elements.floatingButton) {
-        elements.floatingButton.addEventListener('change', async (e) => {
-            if (e.target.checked) {
-                const granted = await browserAPI.permissions.request({ origins: ['<all_urls>'] });
-                if (!granted) {
-                    e.target.checked = false;
-                    showToast(t('toast.permissionDenied'), 'error');
-                    return;
-                }
-                showToast(t('toast.floatingEnabled'));
-            } else {
-                showToast(t('toast.floatingDisabled'));
-            }
-            currentSettings.floatingButton = e.target.checked;
-            await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
-            // Background decides whether content.js stays registered — auto-translate
-            // may still need it even with the floating button off.
-            await browserAPI.runtime.sendMessage({ type: 'SYNC_CONTENT_SCRIPT' });
-            if (!e.target.checked && !currentSettings.autoTranslatePages) {
-                try { await browserAPI.permissions.remove({ origins: ['<all_urls>'] }); } catch (err) {}
-            }
-        });
-    }
-
-    // Auto-translate-on-load toggle — permission required to enable, same
-    // shared-permission bookkeeping as the floating button above. Per-language/
-    // per-site exceptions still live in the full Settings page only.
-    if (elements.autoTranslatePages) {
-        elements.autoTranslatePages.addEventListener('change', async (e) => {
-            if (e.target.checked) {
-                const granted = await browserAPI.permissions.request({ origins: ['<all_urls>'] });
-                if (!granted) {
-                    e.target.checked = false;
-                    showToast(t('toast.permissionDenied'), 'error');
-                    return;
-                }
-                showToast(t('toast.autoTranslateEnabled'));
-            } else {
-                showToast(t('toast.autoTranslateDisabled'));
-            }
-            currentSettings.autoTranslatePages = e.target.checked;
-            await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
-            await browserAPI.runtime.sendMessage({ type: 'SYNC_CONTENT_SCRIPT' });
-            if (!e.target.checked && !currentSettings.floatingButton) {
-                try { await browserAPI.permissions.remove({ origins: ['<all_urls>'] }); } catch (err) {}
-            }
-        });
-    }
-
-    if (elements.autoTranslateOptionsLink) {
-        elements.autoTranslateOptionsLink.addEventListener('click', () => {
-            browserAPI.runtime.openOptionsPage();
-        });
-    }
-
-    if (elements.unignoreSiteBtn) {
-        elements.unignoreSiteBtn.addEventListener('click', async () => {
-            if (!matchedNeverSite) return;
-            try {
-                const res = await browserAPI.runtime.sendMessage({
-                    type: 'REMOVE_AUTO_TRANSLATE_NEVER_SITE',
-                    hostname: matchedNeverSite
-                });
-                if (res && res.sites) currentSettings.autoTranslateNeverSites = res.sites;
-                elements.ignoredSiteNote.hidden = true;
-                showToast(t('toast.unignored'));
-            } catch (e) {
-                showToast(t('toast.siteListFailed'), 'error');
-            }
-        });
-    }
-
-    // Save settings button
-    elements.saveSettings.addEventListener('click', async () => {
-        // Request host permission for any non-localhost server URL (opt-in).
-        // Must run inside this click gesture, before any other awaits.
-        const granted = await ensureHostPermissions([
-            elements.ollamaUrl.value,
-            elements.lmstudioUrl.value
-        ]);
-        await saveCurrentSettings();
-        if (!granted) {
-            showToast(t('toast.customServerDenied'), 'error', 5000);
-        } else {
-            showToast(t('toast.saved'));
-        }
-        await checkProviders();
-        await loadModels();
-    });
-
     // (Target-language changes are handled by langPicker.onChange.)
     // (Model changes are handled by modelPicker.onChange.)
 
     // Open options page
-    if (elements.openOptions) {
-        elements.openOptions.addEventListener('click', () => {
-            browserAPI.runtime.openOptionsPage();
-        });
-    }
     if (elements.openOptionsHeader) {
         elements.openOptionsHeader.addEventListener('click', () => {
             browserAPI.runtime.openOptionsPage();
@@ -1174,39 +949,6 @@ function setupEventListeners() {
         });
     }
 
-    // Reset settings to defaults
-    if (elements.resetSettings) {
-        elements.resetSettings.addEventListener('click', async () => {
-            currentSettings = { ...DEFAULT_SETTINGS };
-            await browserAPI.runtime.sendMessage({
-                type: 'SAVE_SETTINGS',
-                settings: currentSettings
-            });
-            // Defaults turn off both all-sites features, so drop the registration.
-            await browserAPI.runtime.sendMessage({ type: 'SYNC_CONTENT_SCRIPT' });
-            // The reset also restores uiLanguage ('auto'), so re-resolve the
-            // UI language before repainting.
-            setUiLanguage(resolvePopupUiLanguage());
-            applyI18nStatic();
-            refreshI18nDynamic();
-            applySettingsToUI();
-            showToast(t('toast.resetToDefaults'));
-        });
-    }
-
-    // Clear the translation cache
-    if (elements.clearCache) {
-        elements.clearCache.addEventListener('click', async (e) => {
-            e.preventDefault();
-            try {
-                await browserAPI.runtime.sendMessage({ type: 'CLEAR_CACHE' });
-                await refreshCacheCount();
-                showToast(t('toast.cacheCleared'));
-            } catch (err) {
-                showToast(t('toast.cacheClearFailed'), 'error');
-            }
-        });
-    }
 }
 
 // Initialize on DOM ready

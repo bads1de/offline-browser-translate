@@ -182,41 +182,6 @@ header h1 {
   color: var(--text-primary);
 }
 
-.form-group.floating-btn-group {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-
-.checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.checkbox-row label {
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.floating-btn-hint {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.4;
-}
-
-.ignored-site-note {
-  color: var(--warning);
-  margin-top: 4px;
-}
-
-.section-divider {
-  border: none;
-  border-top: 1px solid var(--bg-tertiary);
-  margin: 8px 0;
-}
-
 select,
 input[type="text"],
 input[type="number"],
@@ -328,11 +293,6 @@ input[type="checkbox"] {
   cursor: not-allowed;
 }
 
-.primary-btn.small {
-  padding: 10px 16px;
-  font-size: 13px;
-}
-
 .primary-btn .btn-loading {
   display: inline-flex;
   align-items: center;
@@ -370,63 +330,6 @@ input[type="checkbox"] {
 .cancel-btn:hover {
   background: #f28b8d;
   transform: translateY(-1px);
-}
-
-/* Toggle Button */
-.settings-toggle {
-  margin-top: -8px;
-}
-
-.toggle-btn {
-  width: 100%;
-  padding: 10px;
-  background: transparent;
-  border: 1px dashed var(--bg3);
-  border-radius: var(--border-radius);
-  color: var(--text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: var(--transition);
-}
-
-.toggle-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.toggle-arrow {
-  transition: transform 0.2s;
-}
-
-.toggle-btn.active .toggle-arrow {
-  transform: rotate(180deg);
-}
-
-/* Advanced Settings */
-.advanced-settings {
-  padding: 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--bg-tertiary);
-  border-radius: var(--border-radius);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  animation: slideDown 0.2s ease;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .custom-prompts {
@@ -573,46 +476,6 @@ textarea.highlight-vars {
   background: var(--bg-tertiary);
   border-radius: 4px;
   line-height: 1.4;
-}
-
-/* Button Row */
-.button-row {
-  display: flex;
-  gap: 8px;
-}
-
-.secondary-btn.small {
-  padding: 10px 12px;
-  font-size: 12px;
-}
-
-/* Text Button */
-.text-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  cursor: pointer;
-  padding: 6px;
-  transition: var(--transition);
-}
-
-.text-btn:hover {
-  color: var(--red);
-}
-
-/* A .text-btn used as an inline link inside a sentence (not a standalone
-   destructive action) — keep it unobtrusive and accent-colored instead of
-   the default hover-red used for things like "Reset settings". */
-.text-btn.inline-link {
-  padding: 0;
-  font-size: inherit;
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-.text-btn.inline-link:hover {
-  color: var(--accent-hover);
 }
 
 /* Source Language Group */
@@ -913,20 +776,4 @@ textarea.highlight-vars {
 .resize-handle.dragging {
   opacity: 1;
   color: var(--accent);
-}
-
-/* "New" badge for recently added settings */
-.new-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.4;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--bg-dim);
-  background: var(--accent);
-  border-radius: 999px;
-  vertical-align: middle;
 }
