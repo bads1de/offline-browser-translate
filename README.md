@@ -140,6 +140,18 @@ Whole-segment matches take priority over the translation cache, and loading or c
 └── icons/             # Extension icons
 ```
 
+## YouTube caption translation (experimental, Phase 1)
+
+Watch YouTube videos in your language. Caption text is sent only to your local LLM — nowhere else.
+
+- **Scope**: `watch` pages only. Live streams and other sites are not supported
+- **Usage**: Open the popup on the video page and toggle "Translate YouTube captions"
+- **Display**: The popup's "Show original + translation (bilingual)" checkbox switches between translated-only and original+translation
+- **How it works**: The caption track the player already uses (`/api/timedtext`) is fetched as `json3`, merged into sentence-length cues, translated through the existing pipeline, and painted on a shadow-root overlay on the player. Native captions are visually hidden but kept in the DOM
+- **Note**: The first cues take a few seconds (caption fetch + translation). Only videos that have captions are supported
+
+See [docs/youtube-captions-requirements.md](docs/youtube-captions-requirements.md) for the spec and limitations.
+
 ## Development
 
 Pure vanilla JavaScript — the extension loads unpacked with no build step:

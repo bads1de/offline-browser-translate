@@ -50,7 +50,8 @@ const DEFAULT_SETTINGS = {
     // every page load costs real inference time on the user's own machine.
     autoTranslatePages: false,
     autoTranslateNeverLanguages: [], // language codes to leave alone
-    autoTranslateNeverSites: []      // hostnames to leave alone (subdomains included)
+    autoTranslateNeverSites: [],     // hostnames to leave alone (subdomains included)
+    youtubeCaptionMode: 'replace'   // 'replace': translated line only / 'bilingual': original + translation
 };
 
 let debugEnabled = false;
@@ -1446,6 +1447,94 @@ function makePartialReporter(sender) {
     };
 }
 
+// ============================================================================
+// Timedtext fetch bridge
+// The content script runs in an isolated world, so its fetch would carry the
+// extension origin and get CORS/pot-checked by YouTube. The player already
+// holds a baseUrl for the same track, so we execute the GET in the page's
+// MAIN world with credentials included and hand the raw body back. Host name
+// +/watch +/api/timedtext are the only shape allowed.
+// ============================================================================
+const TIMEDTEXT_ALLOWED_HOSTS = new Set(['www.youtube.com', 'm.youtube.com', 'youtube.com']);
+
+// Read the caption track list from the page's player. The isolated content
+// script world cannot see ytInitialPlayerResponse / the movie_player object,
+// so this runs in the MAIN world and hands back a plain JSON shape only.
+async function getPlayerCaptionsFromPage(tabId) {
+    if (typeof tabId !== 'number') throw new Error('No tab id');
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: () => {
+            try {
+                const player = document.getElementById('movie_player');
+                let pr = null;
+                if (player && typeof player.getPlayerResponse === 'function') {
+                    try { pr = player.getPlayerResponse(); } catch (e) { pr = null; }
+                }
+                if (!pr && typeof window.ytInitialPlayerResponse === 'object') {
+                    pr = window.ytInitialPlayerResponse;
+                }
+                if (!pr) return { error: 'NO_PLAYER_RESPONSE' };
+                const trackRoot = pr.captions && pr.captions.playerCaptionsTracklistRenderer;
+                const tracks = trackRoot && Array.isArray(trackRoot.captionTracks) ? trackRoot.captionTracks : [];
+                const vd = pr.videoDetails || {};
+                const pickName = (n) => (n && (n.simpleText || (Array.isArray(n.runs) ? n.runs.map(r => r.utf8 || '').join('') : ''))) || '';
+                return {
+                    videoId: vd.videoId || '',
+                    title: vd.title || '',
+                    defaultAudioLanguage: vd.defaultAudioLanguage
+                        || (Array.isArray(vd.audioTracks) && vd.audioTracks[0] && vd.audioTracks[0].audioTrackId)
+                        || '',
+                    tracks: tracks.map(tr => ({
+                        baseUrl: tr.baseUrl || '',
+                        languageCode: tr.languageCode || '',
+                        kind: tr.kind || '',
+                        name: pickName(tr.name),
+                        vssId: tr.vssId || ''
+                    })).filter(tr => tr.baseUrl)
+                };
+            } catch (e) {
+                return { error: String(e && e.message || e) };
+            }
+        }
+    });
+    const payload = result && result[0] && result[0].result;
+    if (!payload) throw new Error('No response from page');
+    return payload;
+}
+
+async function fetchTimedtextInPage(tabId, url) {
+    if (typeof tabId !== 'number') throw new Error('No tab id');
+    let parsed;
+    try { parsed = new URL(url); } catch (e) { throw new Error('Invalid timedtext URL'); }
+    if (parsed.protocol !== 'https:') throw new Error('Only https timedtext URLs are allowed');
+    if (!TIMEDTEXT_ALLOWED_HOSTS.has(parsed.hostname)) throw new Error('Only youtube.com timedtext URLs are allowed');
+    if (!parsed.pathname.startsWith('/api/timedtext')) throw new Error('Only /api/timedtext paths are allowed');
+
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        args: [url],
+        func: async (targetUrl) => {
+            try {
+                const resp = await fetch(targetUrl, {
+                    method: 'GET',
+                    credentials: 'include',
+                    redirect: 'follow'
+                });
+                const text = await resp.text();
+                return { ok: resp.ok, status: resp.status, text };
+            } catch (e) {
+                return { ok: false, status: 0, text: '', error: String(e && e.message || e) };
+            }
+        }
+    });
+    const payload = result && result[0] && result[0].result;
+    if (!payload) throw new Error('No response from page fetch');
+    return payload;
+}
+
 browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // console.log('[Background] Received message:', message.type);
 
@@ -1512,6 +1601,29 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     break;
                 }
 
+                case 'GET_PLAYER_CAPTIONS': {
+                    try {
+                        const tabId = sender && sender.tab && sender.tab.id;
+                        const payload = await getPlayerCaptionsFromPage(tabId);
+                        sendResponse(payload);
+                    } catch (e) {
+                        sendResponse({ error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
+                case 'FETCH_TIMEDTEXT': {
+                    try {
+                        const tabId = sender && sender.tab && sender.tab.id;
+                        const payload = await fetchTimedtextInPage(tabId, message.url);
+                        sendResponse(payload);
+                    } catch (e) {
+                        sendResponse({ ok: false, status: 0, text: '', error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
+
                 case 'TRANSLATE':
                     // Pass sourceLanguage for TranslateGemma support
                     let settingsWithSource = {
@@ -1540,7 +1652,7 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         message.texts,
                         message.targetLanguage,
                         settingsWithSource,
-                        makePartialReporter(sender)
+                        message.silentPartials ? null : makePartialReporter(sender)
                     );
                     sendResponse({
                         translations: result.translations,
@@ -1681,6 +1793,13 @@ browserAPI.runtime.onInstalled.addListener(async () => {
         contexts: ["selection"]
     }, () => { if (browserAPI.runtime.lastError) {} });
 
+    browserAPI.contextMenus.create({
+        id: "translate-youtube-captions",
+        title: "Translate YouTube captions",
+        contexts: ["page"],
+        documentUrlPatterns: ["https://www.youtube.com/*", "https://m.youtube.com/*", "https://youtube.com/*"]
+    }, () => { if (browserAPI.runtime.lastError) {} });
+
     // Auto-detect and select a model on fresh install (when none is configured yet)
     await autoDetectAndSelectModel();
 
@@ -1750,6 +1869,32 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
 
         } catch (e) {
             console.error('[Background] Context menu translation failed:', e);
+        }
+    } else if (info.menuItemId === "translate-youtube-captions") {
+        if (!tab || !tab.id) return;
+
+        try {
+            const settings = await getSettings();
+
+            const sendToggleMessage = async () => {
+                await browserAPI.tabs.sendMessage(tab.id, {
+                    type: 'TOGGLE_YOUTUBE_CAPTIONS',
+                    targetLanguage: settings.targetLanguage,
+                    mode: settings.youtubeCaptionMode || 'replace'
+                });
+            };
+
+            try {
+                await sendToggleMessage();
+            } catch (e) {
+                console.log('[Background] Caption toggle message failed, injecting content script:', e);
+                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+                await new Promise(resolve => setTimeout(resolve, 200));
+                await sendToggleMessage();
+            }
+
+        } catch (e) {
+            console.error('[Background] YouTube caption toggle failed:', e);
         }
     } else if (info.menuItemId === "translate-selection") {
         if (!tab || !tab.id) return;
