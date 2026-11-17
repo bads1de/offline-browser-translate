@@ -59,6 +59,9 @@ browserAPI.storage.onChanged.addListener((changes, area) => {
     if (newLang && newLang !== currentTargetLanguage) {
         currentTargetLanguage = newLang;
         updateFloatingBtnTitle();
+        // A running caption session is pinned to the language it started with.
+        // Rebuild it so already-translated cues are redone into the new one.
+        if (captionState) rebuildCaptionSessionForLanguage(newLang);
     }
     if (typeof newSettings?.floatingButton === 'boolean') {
         floatingButtonEnabled = newSettings.floatingButton;
@@ -1985,17 +1988,27 @@ function captionIsJapanese() {
     return (navigator.language || '').toLowerCase().startsWith('ja');
 }
 
+// Cues are sorted by start time but may overlap (ASR tracks emit several cues
+// inside one another's window), so a plain binary search can land on a cue
+// that has already ended while an earlier, still-running one exists. Find the
+// last cue starting at or before the playhead, then walk back a little for an
+// overlapping window that has not ended yet.
 function findCurrentCue(cues, timeMs) {
-    let lo = 0, hi = cues.length - 1, result = -1;
+    let lo = 0, hi = cues.length - 1, idx = -1;
     while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        const c = cues[mid];
-        if (timeMs < c.startMs) hi = mid - 1;
-        else if (timeMs >= c.endMs) lo = mid + 1;
-        else { result = mid; break; }
+        if (cues[mid].startMs <= timeMs) { idx = mid; lo = mid + 1; }
+        else hi = mid - 1;
     }
-    if (result < 0) return null;
-    return cues[result];
+    if (idx < 0) return null;
+    if (timeMs < cues[idx].endMs) return cues[idx];
+    const backLimit = Math.max(0, idx - 8);
+    for (let i = idx - 1; i >= backLimit; i--) {
+        if (cues[i].startMs <= timeMs && timeMs < cues[i].endMs) return cues[i];
+    }
+    // A zero-length cue still marks the instant it starts; show it.
+    if (cues[idx].endMs === cues[idx].startMs) return cues[idx];
+    return null;
 }
 
 function ensureOverlay() {
@@ -2291,6 +2304,30 @@ async function reloadCaptionSessionAfterNavigation() {
     teardownCaptionSession();
     const result = await enableYoutubeCaptions(targetLanguage);
     if (!result.ok) captionDebug('caption reload after navigation failed:', result.error);
+}
+
+// The target language changed while a session is running: re-run the session
+// so queued and future cues go to the new language. Translations already shown
+// are dropped rather than left in the previous language mid-video.
+async function rebuildCaptionSessionForLanguage(newLanguage) {
+    if (!captionState) return;
+    const target = normalizeCaptionLangCode(newLanguage);
+    if (!target || target === captionState.targetLanguage) return;
+    const video = captionState.videoEl;
+    const resumeMs = video ? video.currentTime * 1000 : 0;
+    teardownCaptionSession();
+    const result = await enableYoutubeCaptions(newLanguage);
+    if (!result.ok) {
+        captionDebug('caption rebuild for new language failed:', result.error);
+        return;
+    }
+    // Land back near where the viewer was instead of restarting the prefetch
+    // from the top of the video.
+    if (video && resumeMs > 0) {
+        captionQueue.length = 0;
+        pumpCaptionPrefetch();
+    }
+    updateCaptionOverlay();
 }
 
 document.addEventListener('yt-navigate-finish', () => {

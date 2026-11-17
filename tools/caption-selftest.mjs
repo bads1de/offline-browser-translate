@@ -10,7 +10,7 @@ const contentPath = path.join(here, '..', 'content.js');
 const src = fs.readFileSync(contentPath, 'utf8');
 
 const startMarker = 'const CAPTION_MAX_CHARS';
-const endMarker = 'async function fetchCaptionText';
+const endMarker = 'function ensureOverlay';
 const start = src.indexOf(startMarker);
 const end = src.indexOf(endMarker);
 if (start < 0 || end < 0 || end < start) {
@@ -24,13 +24,15 @@ const sandbox = {
     localStorage: { getItem: () => null },
     location: { hostname: 'www.youtube.com', pathname: '/watch' },
     navigator: { language: 'ja-JP' },
+    browserAPI: { runtime: { sendMessage: async () => ({}) } },
+    currentTargetLanguage: 'ja',
     console
 };
 
 const factory = new Function('sandbox', `
-    const { debugEnabled, localStorage, location, navigator } = sandbox;
+    const { debugEnabled, localStorage, location, navigator, browserAPI, currentTargetLanguage } = sandbox;
     ${block}
-    return { pickCaptionTrack, buildTimedtextUrl, parseJson3Captions, parseVttCaptions, assembleCaptionCues, normalizeCaptionLangCode };
+    return { pickCaptionTrack, buildTimedtextUrl, parseJson3Captions, parseVttCaptions, assembleCaptionCues, normalizeCaptionLangCode, findCurrentCue };
 `);
 const api = factory(sandbox);
 
@@ -127,6 +129,27 @@ check('vtt: start time ms', vttCues[0].startMs === 1000, vttCues[0].startMs);
 check('vtt: end time ms', vttCues[0].endMs === 3500, vttCues[0].endMs);
 check('vtt: strips inline tags',
     api.parseVttCaptions('WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n<v Bob>Hi</v>')[0].text === 'Hi');
+
+// findCurrentCue: overlapping (ASR-style) windows
+const overlapCues = [
+    { startMs: 0, endMs: 5000, text: 'long window' },
+    { startMs: 1000, endMs: 1500, text: 'short inside' },
+    { startMs: 2000, endMs: 2500, text: 'another inside' }
+];
+check('find: picks cue covering the playhead',
+    api.findCurrentCue(overlapCues, 2100).text === 'another inside',
+    api.findCurrentCue(overlapCues, 2100));
+check('find: falls back to the still-running earlier cue',
+    api.findCurrentCue(overlapCues, 3000).text === 'long window',
+    api.findCurrentCue(overlapCues, 3000));
+check('find: exactly at a cue start returns that cue',
+    api.findCurrentCue(overlapCues, 0).text === 'long window');
+check('find: gap with no covering cue -> null',
+    api.findCurrentCue([
+        { startMs: 0, endMs: 1000, text: 'a' },
+        { startMs: 3000, endMs: 4000, text: 'b' }
+    ], 2000) === null);
+check('find: empty list -> null', api.findCurrentCue([], 100) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -911,6 +911,8 @@ function setCaptionButtonState(active) {
     btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     btn.classList.toggle('active', active);
     btn.textContent = t(active ? 'youtube.captionOn' : 'youtube.captionOff');
+    // The display-mode choice only applies while captions are being translated.
+    if (elements.youtubeCaptionModeRow) elements.youtubeCaptionModeRow.hidden = !active;
 }
 
 // Only shown on YouTube watch pages; keeps the popup unchanged elsewhere.
@@ -925,7 +927,6 @@ async function refreshYoutubeCaptionButton() {
             return false;
         }
         btn.hidden = false;
-        if (elements.youtubeCaptionModeRow) elements.youtubeCaptionModeRow.hidden = false;
         // Only ask if the content script is already resident — do not inject
         // just because the popup was opened on a YouTube tab.
         let active = false;
@@ -989,11 +990,10 @@ async function toggleYoutubeCaptions() {
     }
 
     if (!response || response.ok === false) {
-        showToast(t('toast.youtubeFail', { message: (response && response.error) || 'unknown error' }), 'error');
-        if (response && /必須|caption|字幕/i.test(response.error || '')) {
-            // If the player had no tracks, show the specific message too
-            if (response.error) showToast(response.error, 'error', 5000);
-        }
+        // The content script already returns a user-facing sentence, so show it
+        // directly rather than wrapping it in the generic failure toast.
+        const detail = response && response.error;
+        showToast(detail || t('toast.youtubeFail', { message: 'unknown error' }), 'error', 5000);
         return;
     }
     if (response.enabled) {
