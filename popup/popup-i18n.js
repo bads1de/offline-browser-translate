@@ -45,8 +45,18 @@ const POPUP_I18N = {
         'restore.restore': 'Restore',
         'restore.toggleTitle': 'Toggle original/translated',
 
+        // YouTube captions
+        'youtube.captionBtn': 'Translate YouTube captions',
+        'youtube.captionOn': 'YouTube captions: translating',
+        'youtube.captionOff': 'Translate YouTube captions',
+        'youtube.bilingual': 'Show original + translation (bilingual)',
+
         // Toasts
         'toast.selectModel': 'Please select a model first',
+        'toast.youtubeOnly': 'Open a YouTube video page first',
+        'toast.youtubeOn': 'YouTube caption translation on',
+        'toast.youtubeOff': 'YouTube caption translation off',
+        'toast.youtubeFail': 'Could not start caption translation: {message}',
         'toast.corsBlocked': 'Your LLM provider is blocking the extension (CORS). See the setup instructions above.',
         'toast.noProvider': 'No LLM provider running. Start Ollama or LMStudio first.',
         'toast.error': 'Error: {message}',
@@ -135,8 +145,18 @@ const POPUP_I18N = {
         'restore.restore': '復元',
         'restore.toggleTitle': '原文/訳文を切り替えます',
 
+        // YouTube 字幕
+        'youtube.captionBtn': 'YouTube の字幕を翻訳',
+        'youtube.captionOn': 'YouTube 字幕: 翻訳中',
+        'youtube.captionOff': 'YouTube の字幕を翻訳',
+        'youtube.bilingual': '原文と訳を併記する（バイリンガル）',
+
         // トースト
         'toast.selectModel': '先にモデルを選択してください',
+        'toast.youtubeOnly': 'YouTube の動画ページを開いてから使ってください',
+        'toast.youtubeOn': 'YouTube 字幕翻訳をオンにしました',
+        'toast.youtubeOff': 'YouTube 字幕翻訳をオフにしました',
+        'toast.youtubeFail': '字幕翻訳を開始できませんでした: {message}',
         'toast.corsBlocked': 'LLM プロバイダーが拡張機能をブロックしています (CORS)。上記のセットアップ手順を確認してください。',
         'toast.noProvider': 'LLM プロバイダーが起動していません。先に Ollama または LM Studio を起動してください。',
         'toast.error': 'エラー: {message}',

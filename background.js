@@ -50,7 +50,8 @@ const DEFAULT_SETTINGS = {
     // every page load costs real inference time on the user's own machine.
     autoTranslatePages: false,
     autoTranslateNeverLanguages: [], // language codes to leave alone
-    autoTranslateNeverSites: []      // hostnames to leave alone (subdomains included)
+    autoTranslateNeverSites: [],     // hostnames to leave alone (subdomains included)
+    youtubeCaptionMode: 'replace'   // 'replace': translated line only / 'bilingual': original + translation
 };
 
 let debugEnabled = false;
@@ -174,6 +175,15 @@ async function getSettings() {
 
 const CONTENT_SCRIPT_ID = 'llm-translator-content';
 
+// Load order matters: the caption modules attach to window and the page
+// script wires their bridge at the end. They are cheap no-ops off YouTube.
+const CONTENT_SCRIPTS = [
+    'content.js',
+    'captions/parser.js',
+    'captions/fetcher.js',
+    'captions/session.js'
+];
+
 function needsContentScript(settings) {
     return !!(settings && (settings.floatingButton || settings.autoTranslatePages));
 }
@@ -185,7 +195,7 @@ async function syncContentScriptRegistration() {
             await browserAPI.scripting.registerContentScripts([{
                 id: CONTENT_SCRIPT_ID,
                 matches: ['http://*/*', 'https://*/*'],
-                js: ['content.js'],
+                js: CONTENT_SCRIPTS,
                 runAt: 'document_idle'
             }]);
         } catch (e) {
@@ -1446,6 +1456,291 @@ function makePartialReporter(sender) {
     };
 }
 
+// ============================================================================
+// Timedtext fetch bridge
+// The content script runs in an isolated world, so its fetch would carry the
+// extension origin and get CORS/pot-checked by YouTube. The player already
+// holds a baseUrl for the same track, so we execute the GET in the page's
+// MAIN world with credentials included and hand the raw body back. Host name
+// +/watch +/api/timedtext are the only shape allowed.
+// ============================================================================
+const TIMEDTEXT_ALLOWED_HOSTS = new Set(['www.youtube.com', 'm.youtube.com', 'youtube.com']);
+
+// Read the caption track list from the page's player. The isolated content
+// script world cannot see ytInitialPlayerResponse / the movie_player object,
+// so this runs in the MAIN world and hands back a plain JSON shape only.
+async function getPlayerCaptionsFromPage(tabId) {
+    if (typeof tabId !== 'number') throw new Error('No tab id');
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: () => {
+            try {
+                const player = document.getElementById('movie_player');
+                let pr = null;
+                if (player && typeof player.getPlayerResponse === 'function') {
+                    try { pr = player.getPlayerResponse(); } catch (e) { pr = null; }
+                }
+                if (!pr && typeof window.ytInitialPlayerResponse === 'object') {
+                    pr = window.ytInitialPlayerResponse;
+                }
+                if (!pr) return { error: 'NO_PLAYER_RESPONSE' };
+                const trackRoot = pr.captions && pr.captions.playerCaptionsTracklistRenderer;
+                const tracks = trackRoot && Array.isArray(trackRoot.captionTracks) ? trackRoot.captionTracks : [];
+                const vd = pr.videoDetails || {};
+                const pickName = (n) => (n && (n.simpleText || (Array.isArray(n.runs) ? n.runs.map(r => r.utf8 || '').join('') : ''))) || '';
+                return {
+                    videoId: vd.videoId || '',
+                    title: vd.title || '',
+                    defaultAudioLanguage: vd.defaultAudioLanguage
+                        || (Array.isArray(vd.audioTracks) && vd.audioTracks[0] && vd.audioTracks[0].audioTrackId)
+                        || '',
+                    tracks: tracks.map(tr => ({
+                        baseUrl: tr.baseUrl || '',
+                        languageCode: tr.languageCode || '',
+                        kind: tr.kind || '',
+                        name: pickName(tr.name),
+                        vssId: tr.vssId || ''
+                    })).filter(tr => tr.baseUrl)
+                };
+            } catch (e) {
+                return { error: String(e && e.message || e) };
+            }
+        }
+    });
+    const payload = result && result[0] && result[0].result;
+    if (!payload) throw new Error('No response from page');
+    return payload;
+}
+
+// ============================================================================
+// Player-driven caption capture
+//
+// A bare /api/timedtext GET now comes back 200 with an empty body unless it
+// carries the player's proof-of-origin token, which only the player can mint.
+// So instead of fetching the track ourselves, we let the player fetch it while
+// a temporary hook records the response.
+//
+// The hook is installed only for the duration of the capture and then put
+// back, so nothing is left patched on youtube.com afterwards. The armed wait
+// resolves on the first usable response instead of polling.
+// ============================================================================
+
+const CAPTURE_TIMEOUT_MS = 8000;
+
+// Arms (or re-arms) the hook and asks the player to load the track. The caller
+// must release the capture afterwards so nothing stays patched on the page.
+async function armCaptionCapture(tabId, track) {
+    if (typeof tabId !== 'number') throw new Error('No tab id');
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        args: [track || {}],
+        func: async (wanted) => {
+            const W = window;
+            const isTimedtext = (u) => typeof u === 'string' && u.indexOf('/api/timedtext') >= 0;
+
+            // Release any previous hook before installing a new one, so a failed
+            // or abandoned capture can never leave fetch patched.
+            if (W.__lctCaptionCapture && typeof W.__lctCaptionCapture.release === 'function') {
+                try { W.__lctCaptionCapture.release(); } catch (e) { /* ignore */ }
+            }
+
+            const state = { responses: [], waiters: [] };
+            const settle = (response) => {
+                state.responses.push(response);
+                const waiters = state.waiters.splice(0, state.waiters.length);
+                for (const waiter of waiters) waiter.resolve(state.responses.slice());
+            };
+            const record = (url, text) => {
+                const body = typeof text === 'string' ? text : '';
+                if (!body.trim()) return;
+                settle({ url: String(url || ''), text: body });
+            };
+
+            const origFetch = W.fetch;
+            const origOpen = W.XMLHttpRequest.prototype.open;
+            const onFetch = function (input) {
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                const promise = origFetch.apply(this, arguments);
+                if (isTimedtext(url)) {
+                    promise.then(r => r.clone().text()).then(t => record(url, t)).catch(() => { });
+                }
+                return promise;
+            };
+            const onOpen = function (method, url) {
+                if (isTimedtext(String(url))) {
+                    this.addEventListener('load', function () {
+                        try { record(url, this.responseText); } catch (e) { /* ignore */ }
+                    });
+                }
+                return origOpen.apply(this, arguments);
+            };
+
+            W.fetch = onFetch;
+            W.XMLHttpRequest.prototype.open = onOpen;
+
+            const capture = {
+                responses: state.responses,
+                // Resolves once responses beyond `seen` exist, so the caller can
+                // keep waiting for a better match; a bare resolve([]) means the
+                // deadline passed with nothing new.
+                wait(ms, seen) {
+                    const already = state.responses.length;
+                    if (already > (seen || 0)) return Promise.resolve(state.responses.slice());
+                    return new Promise((resolve) => {
+                        const timer = setTimeout(() => {
+                            state.waiters = state.waiters.filter(w => w !== waiter);
+                            resolve(state.responses.slice());
+                        }, ms);
+                        const waiter = { resolve: (responses) => { clearTimeout(timer); resolve(responses); } };
+                        state.waiters.push(waiter);
+                    });
+                },
+                release() {
+                    if (W.fetch === onFetch) W.fetch = origFetch;
+                    if (W.XMLHttpRequest.prototype.open === onOpen) {
+                        W.XMLHttpRequest.prototype.open = origOpen;
+                    }
+                    if (W.__lctCaptionCapture === capture) delete W.__lctCaptionCapture;
+                }
+            };
+            W.__lctCaptionCapture = capture;
+
+            const player = document.getElementById('movie_player');
+            if (!player || typeof player.setOption !== 'function') {
+                capture.release();
+                return { error: 'NO_PLAYER' };
+            }
+
+            // Keep the whole track object: restoring a rebuilt {languageCode,
+            // kind} pair loses baseUrl/name/vssId and leaves captions broken.
+            let previous = null;
+            try { previous = player.getOption('captions', 'track') || null; } catch (e) { previous = null; }
+
+            try {
+                if (typeof player.loadModule === 'function') await player.loadModule('captions');
+            } catch (e) { /* module may already be loaded */ }
+
+            try {
+                // Toggle off first so the player re-fetches instead of reusing
+                // the track it already has in memory.
+                player.setOption('captions', 'track', {});
+                await new Promise(r => setTimeout(r, 80));
+                player.setOption('captions', 'track', wanted);
+                player.setOption('captions', 'reload', true);
+            } catch (e) {
+                capture.release();
+                return { error: 'SET_OPTION_FAILED: ' + String(e && e.message || e) };
+            }
+
+            return { ok: true, previous };
+        }
+    });
+    const payload = result && result[0] && result[0].result;
+    if (!payload) throw new Error('No response from page');
+    return payload;
+}
+
+async function waitForCaptionCapture(tabId, timeoutMs, wantedLang) {
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        args: [timeoutMs, wantedLang || ''],
+        func: async (ms, wanted) => {
+            const capture = window.__lctCaptionCapture;
+            if (!capture) return { responses: [] };
+            const matches = (url) => {
+                if (!wanted) return false;
+                const m = /[?&]lang=([^&]+)/.exec(String(url || ''));
+                return !!m && decodeURIComponent(m[1]).toLowerCase().split('-')[0] === wanted;
+            };
+            const deadline = Date.now() + ms;
+            let seen = 0;
+            let responses = [];
+            // A track switch can make the player fetch more than one track, and
+            // the first body is not always the one asked for. Wait for a
+            // matching language when the caller named one; otherwise take the
+            // first usable body.
+            while (Date.now() < deadline) {
+                responses = await capture.wait(Math.min(1500, deadline - Date.now()), seen);
+                seen = responses.length;
+                if (responses.some(r => matches(r.url))) return { responses };
+                if (responses.length > 0 && !wanted) return { responses };
+            }
+            return { responses };
+        }
+    });
+    const payload = result && result[0] && result[0].result;
+    return (payload && payload.responses) || [];
+}
+
+async function releaseCaptionCapture(tabId, previous) {
+    try {
+        await browserAPI.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            args: [previous || null],
+            func: (prev) => {
+                const capture = window.__lctCaptionCapture;
+                if (capture && typeof capture.release === 'function') {
+                    try { capture.release(); } catch (e) { /* ignore */ }
+                }
+                const player = document.getElementById('movie_player');
+                if (!player || typeof player.setOption !== 'function') return false;
+                try {
+                    player.setOption('captions', 'track', prev || {});
+                } catch (e) { /* nothing to restore to */ }
+                return true;
+            }
+        });
+    } catch (e) { /* best effort */ }
+}
+
+// Ask the player to load the track and wait for the timedtext body it fetches.
+async function captureCaptionsViaPlayer(tabId, track) {
+    const armed = await armCaptionCapture(tabId, track);
+    if (armed.error) throw new Error(armed.error);
+    try {
+        const wanted = String(track.languageCode || '').toLowerCase().split('-')[0];
+        const responses = await waitForCaptionCapture(tabId, CAPTURE_TIMEOUT_MS, wanted);
+        return (responses || []).filter(r => r && r.text && r.text.trim());
+    } finally {
+        await releaseCaptionCapture(tabId, armed.previous);
+    }
+}
+
+async function fetchTimedtextInPage(tabId, url) {
+    if (typeof tabId !== 'number') throw new Error('No tab id');
+    let parsed;
+    try { parsed = new URL(url); } catch (e) { throw new Error('Invalid timedtext URL'); }
+    if (parsed.protocol !== 'https:') throw new Error('Only https timedtext URLs are allowed');
+    if (!TIMEDTEXT_ALLOWED_HOSTS.has(parsed.hostname)) throw new Error('Only youtube.com timedtext URLs are allowed');
+    if (!parsed.pathname.startsWith('/api/timedtext')) throw new Error('Only /api/timedtext paths are allowed');
+
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        args: [url],
+        func: async (targetUrl) => {
+            try {
+                const resp = await fetch(targetUrl, {
+                    method: 'GET',
+                    credentials: 'include',
+                    redirect: 'follow'
+                });
+                const text = await resp.text();
+                return { ok: resp.ok, status: resp.status, text };
+            } catch (e) {
+                return { ok: false, status: 0, text: '', error: String(e && e.message || e) };
+            }
+        }
+    });
+    const payload = result && result[0] && result[0].result;
+    if (!payload) throw new Error('No response from page fetch');
+    return payload;
+}
+
 browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // console.log('[Background] Received message:', message.type);
 
@@ -1512,6 +1807,40 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     break;
                 }
 
+                case 'GET_PLAYER_CAPTIONS': {
+                    try {
+                        const tabId = sender && sender.tab && sender.tab.id;
+                        const payload = await getPlayerCaptionsFromPage(tabId);
+                        sendResponse(payload);
+                    } catch (e) {
+                        sendResponse({ error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
+                case 'CAPTURE_PLAYER_CAPTIONS': {
+                    try {
+                        const tabId = sender && sender.tab && sender.tab.id;
+                        const responses = await captureCaptionsViaPlayer(tabId, message.track || null);
+                        sendResponse({ ok: responses.length > 0, responses });
+                    } catch (e) {
+                        sendResponse({ ok: false, responses: [], error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
+                case 'FETCH_TIMEDTEXT': {
+                    try {
+                        const tabId = sender && sender.tab && sender.tab.id;
+                        const payload = await fetchTimedtextInPage(tabId, message.url);
+                        sendResponse(payload);
+                    } catch (e) {
+                        sendResponse({ ok: false, status: 0, text: '', error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
+
                 case 'TRANSLATE':
                     // Pass sourceLanguage for TranslateGemma support
                     let settingsWithSource = {
@@ -1540,7 +1869,7 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         message.texts,
                         message.targetLanguage,
                         settingsWithSource,
-                        makePartialReporter(sender)
+                        message.silentPartials ? null : makePartialReporter(sender)
                     );
                     sendResponse({
                         translations: result.translations,
@@ -1681,6 +2010,13 @@ browserAPI.runtime.onInstalled.addListener(async () => {
         contexts: ["selection"]
     }, () => { if (browserAPI.runtime.lastError) {} });
 
+    browserAPI.contextMenus.create({
+        id: "translate-youtube-captions",
+        title: "Translate YouTube captions",
+        contexts: ["page"],
+        documentUrlPatterns: ["https://www.youtube.com/*", "https://m.youtube.com/*", "https://youtube.com/*"]
+    }, () => { if (browserAPI.runtime.lastError) {} });
+
     // Auto-detect and select a model on fresh install (when none is configured yet)
     await autoDetectAndSelectModel();
 
@@ -1738,7 +2074,7 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
                 // If message failed, content script might not be loaded. Inject it.
                 await browserAPI.scripting.executeScript({
                     target: { tabId: tab.id },
-                    files: ['content.js']
+                    files: CONTENT_SCRIPTS
                 });
 
                 // Wait briefly for script to initialize
@@ -1750,6 +2086,32 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
 
         } catch (e) {
             console.error('[Background] Context menu translation failed:', e);
+        }
+    } else if (info.menuItemId === "translate-youtube-captions") {
+        if (!tab || !tab.id) return;
+
+        try {
+            const settings = await getSettings();
+
+            const sendToggleMessage = async () => {
+                await browserAPI.tabs.sendMessage(tab.id, {
+                    type: 'TOGGLE_YOUTUBE_CAPTIONS',
+                    targetLanguage: settings.targetLanguage,
+                    mode: settings.youtubeCaptionMode || 'replace'
+                });
+            };
+
+            try {
+                await sendToggleMessage();
+            } catch (e) {
+                console.log('[Background] Caption toggle message failed, injecting content script:', e);
+                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS });
+                await new Promise(resolve => setTimeout(resolve, 200));
+                await sendToggleMessage();
+            }
+
+        } catch (e) {
+            console.error('[Background] YouTube caption toggle failed:', e);
         }
     } else if (info.menuItemId === "translate-selection") {
         if (!tab || !tab.id) return;
@@ -1787,7 +2149,7 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
             try {
                 await sendSelectionMessage();
             } catch (e) {
-                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS });
                 await new Promise(resolve => setTimeout(resolve, 200));
                 await sendSelectionMessage();
             }

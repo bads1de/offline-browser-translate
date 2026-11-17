@@ -43,6 +43,7 @@ browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' }).then(r => {
     if (r?.settings) {
         debugEnabled = !!r.settings.debug;
         if (r.settings.targetLanguage) currentTargetLanguage = r.settings.targetLanguage;
+        applyCaptionMode(r.settings.youtubeCaptionMode);
         floatingButtonEnabled = !!r.settings.floatingButton;
         maybeAutoTranslatePage(r.settings);
     }
@@ -56,10 +57,16 @@ browserAPI.storage.onChanged.addListener((changes, area) => {
     if (newLang && newLang !== currentTargetLanguage) {
         currentTargetLanguage = newLang;
         updateFloatingBtnTitle();
+        // A running caption session is pinned to the language it started with.
+        // Rebuild it so already-translated cues are redone into the new one.
+        if (captionSession().status().enabled) rebuildCaptionSessionForLanguage(newLang);
     }
     if (typeof newSettings?.floatingButton === 'boolean') {
         floatingButtonEnabled = newSettings.floatingButton;
         if (!floatingButtonEnabled) hideFloatingBtn();
+    }
+    if (newSettings?.youtubeCaptionMode) {
+        applyCaptionMode(newSettings.youtubeCaptionMode);
     }
 });
 
@@ -97,8 +104,7 @@ let streamedAppliedCount = 0;
 const SKIP_TAGS = new Set([
     'SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED',
     'SVG', 'CANVAS', 'VIDEO', 'AUDIO', 'CODE', 'PRE', 'KBD',
-    'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'
-]);
+    'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON']);
 
 // Minimum text length to consider for translation
 const MIN_TEXT_LENGTH = 2;
@@ -553,8 +559,7 @@ let widgetEl = null;
 let widgetMinimizeTimer = null;
 let widgetHideTimer = null;
 let widgetHovered = false;
-let widgetState = 'idle'; // 'idle' | 'progress' | 'complete'
-// Set when a cancellation is a step inside a more specific action (e.g.
+let widgetState = 'idle'; // 'idle' | 'progress' | 'complete'// Set when a cancellation is a step inside a more specific action (e.g.
 // "Ignore site") that's about to show its own message - keeps the generic
 // "Translation cancelled" from flashing on screen for a moment first.
 let suppressCancelMessage = false;
@@ -1266,8 +1271,7 @@ async function translatePage(targetLanguage, sourceLanguage = 'auto', enableAuto
             const statusMsg = appendFittingClauses(`Translated ${totalApplied}/${totalItems} elements`, [
                 failedItems.length > 0 ? `, ${failedItems.length} failed` : '',
                 cachePercent > 0 ? `, ${cachePercent}% cached` : '',
-                enableAutoTranslate ? ' · auto-on' : ''
-            ].filter(Boolean));
+                enableAutoTranslate ? ' · auto-on' : ''            ].filter(Boolean));
 
             completeWidget(statusMsg);
         }
@@ -1577,6 +1581,30 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
             break;
 
+        case 'TOGGLE_YOUTUBE_CAPTIONS':
+            (async () => {
+                const captions = captionSession();
+                try {
+                    if (captions.status().enabled) {
+                        sendResponse(captions.disable({ notify: false }));
+                        return;
+                    }
+                    sendResponse(await captions.enable(message.targetLanguage || currentTargetLanguage));
+                } catch (e) {
+                    console.error('[Captions] Toggle failed:', e);
+                    sendResponse({ ok: false, error: String(e && e.message || e) });
+                }
+            })();
+            return true; // async sendResponse
+
+        case 'SET_YOUTUBE_CAPTION_MODE':
+            sendResponse({ ok: true, mode: applyCaptionMode(message.mode) });
+            break;
+
+        case 'GET_YOUTUBE_CAPTION_STATUS':
+            sendResponse(captionSession().status());
+            break;
+
         case 'PING':
             sendResponse({ pong: true });
             break;
@@ -1620,8 +1648,7 @@ function getFloatingTranslateBtn() {
     btn.style.cssText = [
         'position:absolute', 'width:2em', 'height:2em', 'cursor:pointer',
         'z-index:999999', 'display:none', 'align-items:center', 'justify-content:center',
-        'transition:opacity 0.1s,transform 0.1s', 'opacity:0', 'transform:scale(0.8)'
-    ].join(';');
+        'transition:opacity 0.1s,transform 0.1s', 'opacity:0', 'transform:scale(0.8)'    ].join(';');
 
     const img = document.createElement('img');
     img.src = browserAPI.runtime.getURL('icons/icon48.png');
@@ -1697,3 +1724,30 @@ document.addEventListener('selectionchange', () => {
 window.addEventListener('scroll', () => {
     if (floatingTranslateBtn && floatingTranslateBtn.style.display !== 'none') hideFloatingBtn();
 }, { passive: true });
+
+// ============================================================================
+// YouTube captions: the feature itself lives in captions/ (parser, fetcher,
+// session). This is the only glue it needs from the page script.
+// ============================================================================
+
+window.LctCaptionDebugEnabled = false;
+window.LctBridge = {
+    send: (message) => browserAPI.runtime.sendMessage(message),
+    toast: (text) => showToast(text)
+};
+
+function captionSession() {
+    return window.LctCaptionSession;
+}
+
+// Keeps the session's display mode in step with the saved setting.
+function applyCaptionMode(mode) {
+    const next = mode === 'bilingual' ? 'bilingual' : 'replace';
+    if (window.LctCaptionSession) window.LctCaptionSession.setMode(next);
+    return next;
+}
+
+function rebuildCaptionSessionForLanguage(language) {
+    if (window.LctCaptionSession) window.LctCaptionSession.rebuildForLanguage(language);
+}
+

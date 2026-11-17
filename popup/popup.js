@@ -5,6 +5,14 @@
 // Use browser API with chrome fallback for Firefox compatibility
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
+// Injected in this order; must match background.js CONTENT_SCRIPTS.
+const CONTENT_SCRIPTS = [
+    '/content.js',
+    '/captions/parser.js',
+    '/captions/fetcher.js',
+    '/captions/session.js'
+];
+
 // Import default settings (kept in sync with background.js DEFAULT_SETTINGS)
 const DEFAULT_SETTINGS = {
     provider: 'auto',
@@ -33,7 +41,8 @@ const DEFAULT_SETTINGS = {
     floatingButton: false,
     autoTranslatePages: false,
     autoTranslateNeverLanguages: [],
-    autoTranslateNeverSites: []
+    autoTranslateNeverSites: [],
+    youtubeCaptionMode: 'replace'
 };
 
 // DOM Elements
@@ -46,6 +55,9 @@ const elements = {
     modelSearch: document.getElementById('modelSearch'),
     modelList: document.getElementById('modelList'),
     refreshModels: document.getElementById('refreshModels'),
+    youtubeCaptionBtn: document.getElementById('youtubeCaptionBtn'),
+    youtubeCaptionBilingual: document.getElementById('youtubeCaptionBilingual'),
+    youtubeCaptionModeRow: document.getElementById('youtubeCaptionModeRow'),
     languagePicker: document.getElementById('languagePicker'),
     langTrigger: document.getElementById('langTrigger'),
     langTriggerLabel: document.getElementById('langTriggerLabel'),
@@ -191,6 +203,7 @@ async function init() {
     await loadModels();
     await checkTranslationStatus();
     await detectPageLanguage();
+    await refreshYoutubeCaptionButton();
 }
 
 // ============================================================================
@@ -550,6 +563,10 @@ function applySettingsToUI() {
     if (elements.sourceLangOverride && currentSettings.sourceLanguage) {
         elements.sourceLangOverride.value = currentSettings.sourceLanguage;
     }
+    // Restore YouTube caption display mode
+    if (elements.youtubeCaptionBilingual) {
+        elements.youtubeCaptionBilingual.checked = currentSettings.youtubeCaptionMode === 'bilingual';
+    }
 }
 
 // Check which providers are available
@@ -753,7 +770,9 @@ async function saveCurrentSettings() {
         targetLanguage: langPicker.getValue(),
         pinnedLanguages: langPicker.pinned,
         // Save the source language override preference
-        sourceLanguage: elements.sourceLangOverride ? elements.sourceLangOverride.value : 'auto'
+        sourceLanguage: elements.sourceLangOverride ? elements.sourceLangOverride.value : 'auto',
+        // YouTube caption display mode
+        youtubeCaptionMode: elements.youtubeCaptionBilingual && elements.youtubeCaptionBilingual.checked ? 'bilingual' : 'replace'
         // Provider, connection URLs, cache, floating button and auto-translate
         // are managed in the full Settings page; we omit them here so the
         // background merge keeps whatever was configured there.
@@ -820,7 +839,7 @@ async function startTranslation() {
         try {
             await browserAPI.scripting.executeScript({
                 target: { tabId: tab.id },
-                files: ['/content.js']
+                files: CONTENT_SCRIPTS
             });
         } catch (injectErr) {
             debugLog('[Popup] Script injection note:', injectErr.message);
@@ -889,6 +908,111 @@ async function cancelTranslation() {
     resetTranslateButton();
 }
 
+// Toggle YouTube caption translation (FR-1)
+function isYoutubeWatchUrl(url) {
+    return !!url && /^https:\/\/(www\.|m\.)?youtube\.com\/watch/.test(url);
+}
+
+function setCaptionButtonState(active) {
+    const btn = elements.youtubeCaptionBtn;
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.classList.toggle('active', active);
+    btn.textContent = t(active ? 'youtube.captionOn' : 'youtube.captionOff');
+    // The display-mode choice only applies while captions are being translated.
+    if (elements.youtubeCaptionModeRow) elements.youtubeCaptionModeRow.hidden = !active;
+}
+
+// Only shown on YouTube watch pages; keeps the popup unchanged elsewhere.
+async function refreshYoutubeCaptionButton() {
+    const btn = elements.youtubeCaptionBtn;
+    if (!btn) return false;
+    try {
+        const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !isYoutubeWatchUrl(tab.url)) {
+            btn.hidden = true;
+            if (elements.youtubeCaptionModeRow) elements.youtubeCaptionModeRow.hidden = true;
+            return false;
+        }
+        btn.hidden = false;
+        // Only ask if the content script is already resident — do not inject
+        // just because the popup was opened on a YouTube tab.
+        let active = false;
+        try {
+            const status = await browserAPI.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_CAPTION_STATUS' });
+            active = !!(status && status.enabled);
+        } catch (e) {
+            debugLog('[Popup] Caption status check (not injected yet):', e && e.message);
+        }
+        setCaptionButtonState(active);
+        return true;
+    } catch (e) {
+        btn.hidden = true;
+        return false;
+    }
+}
+
+async function toggleYoutubeCaptions() {
+    const model = modelPicker.getValue();
+    if (!model) {
+        showToast(t('toast.selectModel'), 'error');
+        return;
+    }
+    if (!providersAvailable) {
+        showToast(providersBlocked ? t('toast.corsBlocked') : t('toast.noProvider'), 'error');
+        return;
+    }
+
+    await saveCurrentSettings();
+
+    const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.id || !isYoutubeWatchUrl(tab.url)) {
+        showToast(t('toast.youtubeOnly'), 'error');
+        return;
+    }
+
+    // Inject content script (same pattern as startTranslation)
+    try {
+        await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS });
+    } catch (e) {
+        debugLog('[Popup] Caption toggle injection note:', e && e.message);
+    }
+    for (let i = 0; i < 15; i++) {
+        try {
+            const resp = await browserAPI.tabs.sendMessage(tab.id, { type: 'PING' });
+            if (resp && resp.pong) break;
+        } catch { }
+        await new Promise(r => setTimeout(r, 100));
+    }
+
+    let response;
+    try {
+        response = await browserAPI.tabs.sendMessage(tab.id, {
+            type: 'TOGGLE_YOUTUBE_CAPTIONS',
+            targetLanguage: currentSettings.targetLanguage,
+            mode: currentSettings.youtubeCaptionMode || 'replace'
+        });
+    } catch (e) {
+        showToast(t('toast.youtubeFail', { message: e.message }), 'error');
+        return;
+    }
+
+    if (!response || response.ok === false) {
+        // The content script already returns a user-facing sentence, so show it
+        // directly rather than wrapping it in the generic failure toast.
+        const detail = response && response.error;
+        showToast(detail || t('toast.youtubeFail', { message: 'unknown error' }), 'error', 5000);
+        return;
+    }
+    if (response.enabled) {
+        setCaptionButtonState(true);
+        showToast(t('toast.youtubeOn'));
+    } else {
+        setCaptionButtonState(false);
+        showToast(t('toast.youtubeOff'));
+    }
+}
+
 // Toggle translation on/off (uses cached translations if available)
 async function toggleTranslation() {
     try {
@@ -924,6 +1048,28 @@ function setupEventListeners() {
 
     // Restore/Toggle button
     elements.restoreBtn.addEventListener('click', toggleTranslation);
+
+    // YouTube caption translation (only visible on watch pages)
+    if (elements.youtubeCaptionBtn) {
+        elements.youtubeCaptionBtn.addEventListener('click', toggleYoutubeCaptions);
+    }
+
+    // Bilingual (original + translation) display toggle
+    if (elements.youtubeCaptionBilingual) {
+        elements.youtubeCaptionBilingual.addEventListener('change', async () => {
+            const mode = elements.youtubeCaptionBilingual.checked ? 'bilingual' : 'replace';
+            currentSettings = { ...currentSettings, youtubeCaptionMode: mode };
+            await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
+            try {
+                const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+                if (tab && tab.id && isYoutubeWatchUrl(tab.url)) {
+                    await browserAPI.tabs.sendMessage(tab.id, { type: 'SET_YOUTUBE_CAPTION_MODE', mode });
+                }
+            } catch (e) {
+                debugLog('[Popup] Could not push caption mode to tab:', e && e.message);
+            }
+        });
+    }
 
     // Refresh models
     elements.refreshModels.addEventListener('click', async () => {
