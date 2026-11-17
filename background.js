@@ -1504,6 +1504,132 @@ async function getPlayerCaptionsFromPage(tabId) {
     return payload;
 }
 
+// ============================================================================
+// Player-driven caption capture
+//
+// A bare /api/timedtext GET now comes back 200 with an empty body unless it
+// carries the player's proof-of-origin token, which only the player can mint.
+// So instead of fetching the track ourselves, we let the player fetch it: hook
+// fetch/XHR in the MAIN world, ask the player to load the chosen track, and
+// read the response it made. The hook lives on window so repeated attempts
+// reuse it, and the user's own caption selection is restored afterwards.
+// ============================================================================
+
+async function installCaptionCapture(tabId, track) {
+    if (typeof tabId !== 'number') throw new Error('No tab id');
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        args: [track || {}],
+        func: async (wanted) => {
+            try {
+                const W = window;
+                if (!W.__lctCaptionHook) {
+                    const state = { responses: [], installed: true };
+                    W.__lctCaptionHook = state;
+                    const isTimedtext = (u) => typeof u === 'string' && u.indexOf('/api/timedtext') >= 0;
+                    const push = (url, text) => {
+                        if (!text) return;
+                        state.responses.push({ url: String(url), text: String(text) });
+                    };
+                    const origFetch = W.fetch;
+                    W.fetch = function (input) {
+                        const url = typeof input === 'string' ? input : (input && input.url) || '';
+                        const p = origFetch.apply(this, arguments);
+                        if (isTimedtext(url)) {
+                            p.then(r => r.clone().text()).then(t => push(url, t)).catch(() => { });
+                        }
+                        return p;
+                    };
+                    const origOpen = W.XMLHttpRequest.prototype.open;
+                    W.XMLHttpRequest.prototype.open = function (method, url) {
+                        if (isTimedtext(String(url))) {
+                            this.addEventListener('load', function () {
+                                try { push(url, this.responseText); } catch (e) { /* ignore */ }
+                            });
+                        }
+                        return origOpen.apply(this, arguments);
+                    };
+                }
+                W.__lctCaptionHook.responses.length = 0;
+
+                const player = document.getElementById('movie_player');
+                if (!player || typeof player.setOption !== 'function') return { error: 'NO_PLAYER' };
+
+                let previous = null;
+                try { previous = player.getOption('captions', 'track') || null; } catch (e) { previous = null; }
+                try {
+                    if (typeof player.loadModule === 'function') await player.loadModule('captions');
+                } catch (e) { /* module may already be loaded */ }
+                try {
+                    // Toggle off first so the player re-fetches instead of reusing
+                    // the track it already has in memory.
+                    player.setOption('captions', 'track', {});
+                    await new Promise(r => setTimeout(r, 80));
+                    player.setOption('captions', 'track', wanted);
+                    player.setOption('captions', 'reload', true);
+                } catch (e) {
+                    return { error: 'SET_OPTION_FAILED: ' + String(e && e.message || e) };
+                }
+                return { ok: true, previous: previous ? { languageCode: previous.languageCode, kind: previous.kind } : null };
+            } catch (e) {
+                return { error: String(e && e.message || e) };
+            }
+        }
+    });
+    const payload = result && result[0] && result[0].result;
+    if (!payload) throw new Error('No response from page');
+    return payload;
+}
+
+async function pollCaptionCapture(tabId) {
+    const result = await browserAPI.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: () => {
+            const s = window.__lctCaptionHook;
+            if (!s) return { responses: [], installed: false };
+            return { responses: s.responses.slice(0, 8), installed: true };
+        }
+    });
+    return (result && result[0] && result[0].result) || { responses: [] };
+}
+
+async function restorePlayerCaptions(tabId, previous) {
+    try {
+        await browserAPI.scripting.executeScript({
+            target: { tabId },
+            world: 'MAIN',
+            args: [previous || null],
+            func: (prev) => {
+                const player = document.getElementById('movie_player');
+                if (!player || typeof player.setOption !== 'function') return false;
+                try {
+                    player.setOption('captions', 'track', prev || {});
+                } catch (e) { /* nothing to restore to */ }
+                return true;
+            }
+        });
+    } catch (e) { /* best effort */ }
+}
+
+// Ask the player to load the track and wait for the timedtext body it fetches.
+async function captureCaptionsViaPlayer(tabId, track) {
+    const started = await installCaptionCapture(tabId, track);
+    if (started.error) throw new Error(started.error);
+    try {
+        for (let i = 0; i < 30; i++) {
+            await new Promise(r => setTimeout(r, 200));
+            const polled = await pollCaptionCapture(tabId);
+            const usable = (polled.responses || []).filter(r => r && r.text && r.text.trim());
+            if (usable.length > 0) return usable;
+        }
+        return [];
+    } finally {
+        await restorePlayerCaptions(tabId, started.previous);
+    }
+}
+
 async function fetchTimedtextInPage(tabId, url) {
     if (typeof tabId !== 'number') throw new Error('No tab id');
     let parsed;
@@ -1608,6 +1734,17 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         sendResponse(payload);
                     } catch (e) {
                         sendResponse({ error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
+                case 'CAPTURE_PLAYER_CAPTIONS': {
+                    try {
+                        const tabId = sender && sender.tab && sender.tab.id;
+                        const responses = await captureCaptionsViaPlayer(tabId, message.track || null);
+                        sendResponse({ ok: responses.length > 0, responses });
+                    } catch (e) {
+                        sendResponse({ ok: false, responses: [], error: e && e.message || String(e) });
                     }
                     break;
                 }

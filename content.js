@@ -1847,6 +1847,42 @@ function parseVttCaptions(text) {
     return cues;
 }
 
+// srv3: the <timedtext> XML shape YouTube serves when fmt is omitted or srv3.
+// Timings are in milliseconds, one <p> per caption event.
+function parseSrv3Captions(text) {
+    const cues = [];
+    const doc = new DOMParser().parseFromString(String(text), 'text/xml');
+    if (doc.getElementsByTagName('parsererror').length > 0) return cues;
+    for (const p of Array.from(doc.getElementsByTagName('p'))) {
+        const startMs = parseInt(p.getAttribute('t') || '', 10);
+        if (!isFinite(startMs)) continue;
+        const durMs = parseInt(p.getAttribute('d') || '', 10);
+        const raw = p.textContent || '';
+        const cleaned = raw.replace(/\r/g, '').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+        if (!cleaned) continue;
+        cues.push({ startMs, endMs: startMs + (isFinite(durMs) ? durMs : 0), text: cleaned });
+    }
+    return cues;
+}
+
+// YouTube now answers a bare timedtext GET with 200 + an empty body, so the
+// caller has to tell an empty payload from a parse failure. Sniff the shape
+// rather than trusting the requested fmt: the server can ignore it.
+function parseCaptionPayload(text) {
+    const body = String(text || '').trim();
+    if (!body) return [];
+    try {
+        if (body.startsWith('{')) return parseJson3Captions(body);
+        if (body.startsWith('<')) return parseSrv3Captions(body);
+        if (body.startsWith('WEBVTT')) return parseVttCaptions(body);
+    } catch (e) {
+        // A truncated body throws out of JSON.parse; treat it as "no cues" so
+        // the caller can try the next format instead of failing outright.
+        return [];
+    }
+    return [];
+}
+
 function assembleCaptionCues(rawCues) {
     const sorted = rawCues.slice().sort((a, b) => a.startMs - b.startMs);
     const collapsed = [];
@@ -2213,26 +2249,63 @@ async function enableYoutubeCaptions(targetLanguage) {
     captionState.isPassthrough = sourceLanguage === (target || 'en');
 
     let cues = [];
-    const formats = ['json3', 'vtt'];
     let lastError = null;
+    // Preferred path: let the player load the track and capture the body it
+    // fetched. Only the player can attach the proof-of-origin token, so a bare
+    // GET of the same URL comes back empty on current YouTube.
+    try {
+        const captured = await browserAPI.runtime.sendMessage({
+            type: 'CAPTURE_PLAYER_CAPTIONS',
+            track: {
+                languageCode: track.languageCode,
+                kind: track.kind,
+                vssId: track.vssId,
+                baseUrl: track.baseUrl
+            }
+        });
+        if (captured && captured.ok) {
+            for (const r of captured.responses || []) {
+                const parsed = parseCaptionPayload(r.text);
+                captionDebug('captured caption payload:', r.url ? r.url.slice(0, 80) : '', parsed.length, 'cues');
+                if (parsed.length > cues.length) cues = parsed;
+            }
+        } else if (captured && captured.error) {
+            lastError = new Error(captured.error);
+            captionDebug('player caption capture failed:', captured.error);
+        }
+    } catch (e) {
+        lastError = e;
+        captionDebug('player caption capture threw:', e && e.message);
+    }
+
+    // Fallback: fetch the track directly (works when the baseUrl still carries
+    // a usable token, and keeps older YouTube builds working).
+    const formats = ['json3', 'vtt', 'srv3'];
     for (const fmt of formats) {
         if (cues.length) break;
-        for (let attempt = 0; attempt < 3 && !cues.length; attempt++) {
+        for (let attempt = 0; attempt < 2 && !cues.length; attempt++) {
             try {
                 const url = buildTimedtextUrl(track.baseUrl, fmt);
                 const text = await fetchCaptionText(url);
-                if (fmt === 'json3') cues = parseJson3Captions(text);
-                else cues = parseVttCaptions(text);
-                captionDebug(`timedtext ${fmt} attempt ${attempt + 1}: ${cues.length} cues, ${text.length} bytes`);
+                const parsed = parseCaptionPayload(text);
+                captionDebug(`direct timedtext ${fmt} attempt ${attempt + 1}: ${parsed.length} cues, ${(text || '').length} bytes`);
+                if (parsed.length > cues.length) cues = parsed;
+                if (!text || !String(text).trim()) {
+                    lastError = new Error('empty response body');
+                }
             } catch (e) {
                 lastError = e;
-                captionDebug(`timedtext ${fmt} attempt ${attempt + 1} failed:`, e && e.message);
+                captionDebug(`direct timedtext ${fmt} attempt ${attempt + 1} failed:`, e && e.message);
                 await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
             }
         }
     }
     cues = assembleCaptionCues(cues);
     if (cues.length === 0) {
+        captionDebug('caption fetch failed', {
+            track: { lang: track.languageCode, kind: track.kind, vssId: track.vssId },
+            lastError: lastError && lastError.message
+        });
         teardownCaptionSession();
         return { ok: false, error: captionIsJapanese()
             ? `字幕を取得できませんでした${lastError ? ` (${lastError.message})` : ''}`

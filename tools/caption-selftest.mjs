@@ -26,13 +26,39 @@ const sandbox = {
     navigator: { language: 'ja-JP' },
     browserAPI: { runtime: { sendMessage: async () => ({}) } },
     currentTargetLanguage: 'ja',
+    // Minimal DOMParser stand-in: enough for <p t= d=>text</p> extraction.
+    DOMParser: class {
+        parseFromString(str) {
+            const items = [];
+            const re = /<p\b([^>]*)>([\s\S]*?)<\/p>/g;
+            let m;
+            while ((m = re.exec(str)) !== null) {
+                const attrs = m[1];
+                const t = /\bt="(-?\d+)"/.exec(attrs);
+                const d = /\bd="(-?\d+)"/.exec(attrs);
+                items.push({
+                    getAttribute: (name) => {
+                        if (name === 't') return t ? t[1] : null;
+                        if (name === 'd') return d ? d[1] : null;
+                        return null;
+                    },
+                    textContent: m[2].replace(/<[^>]+>/g, '')
+                });
+            }
+            return {
+                getElementsByTagName: (tag) => (tag === 'p' ? items : []),
+                // parse errors are not modelled; malformed XML yields zero <p>
+                querySelector: () => null
+            };
+        }
+    },
     console
 };
 
 const factory = new Function('sandbox', `
-    const { debugEnabled, localStorage, location, navigator, browserAPI, currentTargetLanguage } = sandbox;
+    const { debugEnabled, localStorage, location, navigator, browserAPI, currentTargetLanguage, DOMParser } = sandbox;
     ${block}
-    return { pickCaptionTrack, buildTimedtextUrl, parseJson3Captions, parseVttCaptions, assembleCaptionCues, normalizeCaptionLangCode, findCurrentCue };
+    return { pickCaptionTrack, buildTimedtextUrl, parseJson3Captions, parseVttCaptions, assembleCaptionCues, normalizeCaptionLangCode, findCurrentCue, parseCaptionPayload, parseSrv3Captions };
 `);
 const api = factory(sandbox);
 
@@ -150,6 +176,26 @@ check('find: gap with no covering cue -> null',
         { startMs: 3000, endMs: 4000, text: 'b' }
     ], 2000) === null);
 check('find: empty list -> null', api.findCurrentCue([], 100) === null);
+
+// The reported failure: a 200 with an empty body reached JSON.parse.
+check('payload: empty body -> no cues (no throw)',
+    api.parseCaptionPayload('').length === 0);
+check('payload: whitespace-only body -> no cues',
+    api.parseCaptionPayload('   \n\t ').length === 0);
+check('payload: truncated JSON -> no cues instead of throwing',
+    api.parseCaptionPayload('{"events":[{"tStartMs":0,').length === 0);
+check('payload: sniffed as json3', api.parseCaptionPayload(JSON.stringify(json3)).length === 4);
+check('payload: sniffed as vtt', api.parseCaptionPayload(vtt).length === 2);
+check('payload: sniffed as srv3',
+    api.parseCaptionPayload('<timedtext><body><p t="1000" d="2000">Hi <s>there</s></p></body></timedtext>')[0].text === 'Hi there');
+
+check('srv3: start/end from t and d',
+    (() => {
+        const c = api.parseSrv3Captions('<timedtext><body><p t="1500" d="2500">x</p></body></timedtext>')[0];
+        return c.startMs === 1500 && c.endMs === 4000;
+    })());
+check('srv3: entities decoded into text',
+    api.parseSrv3Captions('<timedtext><body><p t="0" d="1000">a &amp; b</p></body></timedtext>')[0].text.includes('&'));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
