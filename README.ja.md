@@ -145,11 +145,22 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 ├── manifest.json      # 拡張機能マニフェスト (MV3)
 ├── background.js      # バックグラウンドスクリプト（LLM API、設定、メッセージルーティング）
 ├── content.js         # コンテンツスクリプト（DOM 操作）
+├── captions/          # YouTube 字幕翻訳
+│   ├── parser.js      # 字幕の解析・文単位への連結
+│   ├── fetcher.js     # 字幕の取得（プレイヤー経由 / 直接）
+│   └── session.js     # 再生同期・翻訳キュー・オーバーレイ
 ├── popup/
 │   ├── popup.html     # ポップアップ UI
 │   ├── popup.css      # スタイル（Everforest Dark テーマ）
 │   └── popup.js       # ポップアップのロジック
 └── icons/             # 拡張機能アイコン
+```
+
+字幕まわりを触ったら、次の自己テストで解析ロジックを検証できます。
+
+```
+node tools/caption-selftest.mjs    # 解析・連結・キュー検索
+node tools/caption-wiring-test.mjs # 取得経路のフォールバック
 ```
 
 ## 開発

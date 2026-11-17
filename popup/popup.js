@@ -5,6 +5,14 @@
 // Use browser API with chrome fallback for Firefox compatibility
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
+// Injected in this order; must match background.js CONTENT_SCRIPTS.
+const CONTENT_SCRIPTS = [
+    '/content.js',
+    '/captions/parser.js',
+    '/captions/fetcher.js',
+    '/captions/session.js'
+];
+
 // Import default settings (kept in sync with background.js DEFAULT_SETTINGS)
 const DEFAULT_SETTINGS = {
     provider: 'auto',
@@ -831,7 +839,7 @@ async function startTranslation() {
         try {
             await browserAPI.scripting.executeScript({
                 target: { tabId: tab.id },
-                files: ['/content.js']
+                files: CONTENT_SCRIPTS
             });
         } catch (injectErr) {
             debugLog('[Popup] Script injection note:', injectErr.message);
@@ -965,7 +973,7 @@ async function toggleYoutubeCaptions() {
 
     // Inject content script (same pattern as startTranslation)
     try {
-        await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: ['/content.js'] });
+        await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS });
     } catch (e) {
         debugLog('[Popup] Caption toggle injection note:', e && e.message);
     }

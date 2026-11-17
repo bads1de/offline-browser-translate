@@ -43,9 +43,7 @@ browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' }).then(r => {
     if (r?.settings) {
         debugEnabled = !!r.settings.debug;
         if (r.settings.targetLanguage) currentTargetLanguage = r.settings.targetLanguage;
-        if (r.settings.youtubeCaptionMode) {
-            captionMode = r.settings.youtubeCaptionMode === 'bilingual' ? 'bilingual' : 'replace';
-        }
+        applyCaptionMode(r.settings.youtubeCaptionMode);
         floatingButtonEnabled = !!r.settings.floatingButton;
         maybeAutoTranslatePage(r.settings);
     }
@@ -61,15 +59,14 @@ browserAPI.storage.onChanged.addListener((changes, area) => {
         updateFloatingBtnTitle();
         // A running caption session is pinned to the language it started with.
         // Rebuild it so already-translated cues are redone into the new one.
-        if (captionState) rebuildCaptionSessionForLanguage(newLang);
+        if (captionSession().status().enabled) rebuildCaptionSessionForLanguage(newLang);
     }
     if (typeof newSettings?.floatingButton === 'boolean') {
         floatingButtonEnabled = newSettings.floatingButton;
         if (!floatingButtonEnabled) hideFloatingBtn();
     }
     if (newSettings?.youtubeCaptionMode) {
-        captionMode = newSettings.youtubeCaptionMode === 'bilingual' ? 'bilingual' : 'replace';
-        updateCaptionOverlay();
+        applyCaptionMode(newSettings.youtubeCaptionMode);
     }
 });
 
@@ -1586,16 +1583,13 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'TOGGLE_YOUTUBE_CAPTIONS':
             (async () => {
+                const captions = captionSession();
                 try {
-                    if (captionState) {
-                        disableYoutubeCaptions(false);
-                        sendResponse({ ok: true, enabled: false });
+                    if (captions.status().enabled) {
+                        sendResponse(captions.disable({ notify: false }));
                         return;
                     }
-                    const result = await enableYoutubeCaptions(
-                        message.targetLanguage || currentTargetLanguage
-                    );
-                    sendResponse(result);
+                    sendResponse(await captions.enable(message.targetLanguage || currentTargetLanguage));
                 } catch (e) {
                     console.error('[Captions] Toggle failed:', e);
                     sendResponse({ ok: false, error: String(e && e.message || e) });
@@ -1604,13 +1598,11 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true; // async sendResponse
 
         case 'SET_YOUTUBE_CAPTION_MODE':
-            captionMode = message.mode === 'bilingual' ? 'bilingual' : 'replace';
-            updateCaptionOverlay();
-            sendResponse({ ok: true, mode: captionMode });
+            sendResponse({ ok: true, mode: applyCaptionMode(message.mode) });
             break;
 
         case 'GET_YOUTUBE_CAPTION_STATUS':
-            sendResponse(getYoutubeCaptionStatus());
+            sendResponse(captionSession().status());
             break;
 
         case 'PING':
@@ -1734,684 +1726,28 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 
 // ============================================================================
-// YouTube caption translation (Phase 1: FR-1..FR-5, FR-7 replace-only, FR-10)
-// Reads caption tracks from the player response via the background bridge,
-// fetches timedtext in the page world, assembles sentence-length cues, and
-// paints translated lines on a shadow-root overlay on the player.
+// YouTube captions: the feature itself lives in captions/ (parser, fetcher,
+// session). This is the only glue it needs from the page script.
 // ============================================================================
 
-const CAPTION_MAX_CHARS = 200;
-const CAPTION_MAX_SPAN_MS = 10000;
-// Captions are short prompts (~1s CPU / ~0.2s GPU) but a burst of cues at
-// playback start still needs headroom; 20s covers low-end CPUs while keeping
-// translation spend proportional to watching time.
-const CAPTION_PREFETCH_AHEAD_MS = 20000;
-const CAPTION_FAILURE_BACKOFF_MS = 30000;
-const CAPTION_FAILURE_THRESHOLD = 3;
-const CAPTION_TICK_MS = 250;
+window.LctCaptionDebugEnabled = false;
+window.LctBridge = {
+    send: (message) => browserAPI.runtime.sendMessage(message),
+    toast: (text) => showToast(text)
+};
 
-const CAPTION_SENTENCE_END = /[.!?。！？]["')\]」』）】]*$/;
-
-let captionState = null; // null when disabled
-let captionMode = 'replace'; // 'replace' | 'bilingual'
-let captionMemory = new Map(); // session cache: key lang|lang|text -> translation
-let captionQueue = [];
-let captionQueueRunning = false;
-
-function isYoutubeWatchPage() {
-    const h = location.hostname;
-    return (h === 'www.youtube.com' || h === 'm.youtube.com' || h === 'youtube.com')
-        && location.pathname === '/watch';
+function captionSession() {
+    return window.LctCaptionSession;
 }
 
-function captionDebug(...args) {
-    if (debugEnabled || localStorage.getItem('lctCaptionDebug') === '1') {
-        console.log('[Captions]', ...args);
-    }
+// Keeps the session's display mode in step with the saved setting.
+function applyCaptionMode(mode) {
+    const next = mode === 'bilingual' ? 'bilingual' : 'replace';
+    if (window.LctCaptionSession) window.LctCaptionSession.setMode(next);
+    return next;
 }
 
-function normalizeCaptionLangCode(code) {
-    if (!code) return '';
-    const c = String(code).trim().toLowerCase();
-    const asr = c.match(/^[a-z]+\.([a-z-]+)/);
-    if (asr) return asr[1].split('-')[0];
-    return c.split('-')[0];
+function rebuildCaptionSessionForLanguage(language) {
+    if (window.LctCaptionSession) window.LctCaptionSession.rebuildForLanguage(language);
 }
 
-function pickCaptionTrack(tracks, defaultAudioLanguage, targetLanguage) {
-    const target = normalizeCaptionLangCode(targetLanguage);
-    const audio = normalizeCaptionLangCode(defaultAudioLanguage);
-    const list = (tracks || []).filter(t => t && t.baseUrl);
-    if (list.length === 0) return null;
-    const manual = (lang) => list.find(t => normalizeCaptionLangCode(t.languageCode) === lang && (t.kind || '') !== 'asr');
-    const asr = (lang) => list.find(t => normalizeCaptionLangCode(t.languageCode) === lang && (t.kind || '') === 'asr');
-    let chosen = null;
-    if (audio) chosen = manual(audio) || asr(audio);
-    if (!chosen) chosen = manual('en') || asr('en');
-    if (!chosen) chosen = list.find(t => normalizeCaptionLangCode(t.languageCode) !== target) || list[0];
-    return chosen;
-}
-
-function buildTimedtextUrl(baseUrl, fmt) {
-    try {
-        const u = new URL(baseUrl);
-        u.searchParams.set('fmt', fmt);
-        u.searchParams.delete('tlang');
-        return u.toString();
-    } catch (e) {
-        return baseUrl;
-    }
-}
-
-function parseJson3Captions(text) {
-    const data = JSON.parse(text);
-    const events = Array.isArray(data.events) ? data.events : [];
-    const cues = [];
-    for (const ev of events) {
-        if (!ev || typeof ev.tStartMs !== 'number') continue;
-        const startMs = ev.tStartMs;
-        const durMs = typeof ev.dDurationMs === 'number' ? ev.dDurationMs : 0;
-        const segs = Array.isArray(ev.segs) ? ev.segs : [];
-        const raw = segs.map(s => (s && s.utf8) ? String(s.utf8) : '').join('');
-        const textContent = raw.replace(/\r/g, '').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-        if (!textContent) continue;
-        cues.push({ startMs, endMs: startMs + durMs, text: textContent });
-    }
-    return cues;
-}
-
-function parseVttCaptions(text) {
-    const cues = [];
-    const blocks = String(text).replace(/\r/g, '').split(/\n\n+/);
-    const timeToMs = (s) => {
-        const m = String(s).trim().match(/(\d{1,2}):(\d{2}):(\d{2})(?:[.,](\d+))?/);
-        if (!m) return null;
-        const sec = (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
-        const frac = m[4] ? +String(m[4]).padEnd(3, '0').slice(0, 3) : 0;
-        return sec * 1000 + frac;
-    };
-    for (const block of blocks) {
-        const lines = block.split('\n').filter(l => l.trim());
-        const timeIdx = lines.findIndex(l => l.includes('-->'));
-        if (timeIdx < 0) continue;
-        const parts = lines[timeIdx].split('-->');
-        if (parts.length !== 2) continue;
-        const startMs = timeToMs(parts[0]);
-        const endMs = timeToMs(parts[1].trim().split(/\s+/)[0]);
-        if (startMs === null) continue;
-        const textContent = lines.slice(timeIdx + 1).join(' ');
-        const cleaned = textContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-        if (!cleaned) continue;
-        cues.push({ startMs, endMs: endMs === null ? startMs + 2000 : endMs, text: cleaned });
-    }
-    return cues;
-}
-
-// srv3: the <timedtext> XML shape YouTube serves when fmt is omitted or srv3.
-// Timings are in milliseconds, one <p> per caption event.
-function parseSrv3Captions(text) {
-    const cues = [];
-    const doc = new DOMParser().parseFromString(String(text), 'text/xml');
-    if (doc.getElementsByTagName('parsererror').length > 0) return cues;
-    for (const p of Array.from(doc.getElementsByTagName('p'))) {
-        const startMs = parseInt(p.getAttribute('t') || '', 10);
-        if (!isFinite(startMs)) continue;
-        const durMs = parseInt(p.getAttribute('d') || '', 10);
-        const raw = p.textContent || '';
-        const cleaned = raw.replace(/\r/g, '').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-        if (!cleaned) continue;
-        cues.push({ startMs, endMs: startMs + (isFinite(durMs) ? durMs : 0), text: cleaned });
-    }
-    return cues;
-}
-
-// YouTube now answers a bare timedtext GET with 200 + an empty body, so the
-// caller has to tell an empty payload from a parse failure. Sniff the shape
-// rather than trusting the requested fmt: the server can ignore it.
-function parseCaptionPayload(text) {
-    const body = String(text || '').trim();
-    if (!body) return [];
-    try {
-        if (body.startsWith('{')) return parseJson3Captions(body);
-        if (body.startsWith('<')) return parseSrv3Captions(body);
-        if (body.startsWith('WEBVTT')) return parseVttCaptions(body);
-    } catch (e) {
-        // A truncated body throws out of JSON.parse; treat it as "no cues" so
-        // the caller can try the next format instead of failing outright.
-        return [];
-    }
-    return [];
-}
-
-function assembleCaptionCues(rawCues) {
-    const sorted = rawCues.slice().sort((a, b) => a.startMs - b.startMs);
-    const collapsed = [];
-    for (const cue of sorted) {
-        const prev = collapsed[collapsed.length - 1];
-        if (prev) {
-            const prevNorm = prev.text;
-            const curNorm = cue.text;
-            if (curNorm === prevNorm) { prev.endMs = Math.max(prev.endMs, cue.endMs); continue; }
-            if (curNorm.startsWith(prevNorm) && curNorm.length > prevNorm.length) {
-                prev.text = curNorm;
-                prev.endMs = Math.max(prev.endMs, cue.endMs);
-                continue;
-            }
-        }
-        collapsed.push({ ...cue });
-    }
-    const CJK_JOIN = /[\u3040-\u30ff\u3400-\u9fff\uff00-\uffef]/;
-    const joined = [];
-    let cur = null;
-    const flush = () => { if (cur) { joined.push(cur); cur = null; } };
-    for (const cue of collapsed) {
-        if (!cur) { cur = { ...cue }; continue; }
-        const span = cue.endMs - cur.startMs;
-        const endsSentence = CAPTION_SENTENCE_END.test(cur.text);
-        const needsSpace = !(CJK_JOIN.test(cur.text.slice(-1)) || CJK_JOIN.test(cue.text.slice(0, 1)));
-        const candidate = cur.text + (needsSpace ? ' ' : '') + cue.text;
-        if (endsSentence || candidate.length > CAPTION_MAX_CHARS || span > CAPTION_MAX_SPAN_MS) {
-            flush();
-            cur = { ...cue };
-        } else {
-            cur.text = candidate;
-            cur.endMs = cue.endMs;
-        }
-    }
-    flush();
-    return joined.filter(c => c.text && isFinite(c.startMs) && isFinite(c.endMs));
-}
-
-async function fetchCaptionText(url) {
-    const resp = await browserAPI.runtime.sendMessage({ type: 'FETCH_TIMEDTEXT', url });
-    if (!resp || !resp.ok) {
-        throw new Error(resp && resp.error ? resp.error : `timedtext fetch failed (status ${resp && resp.status})`);
-    }
-    return resp.text || '';
-}
-
-function getTranslatedCueText(cue) {
-    if (cue.status === 'done') return cue.translation;
-    return cue.text;
-}
-
-function cleanCaptionTranslation(text) {
-    let t = String(text || '').trim();
-    t = t.replace(/^```(?:json)?/i, '').replace(/```$/,'').trim();
-    t = t.replace(/\s+/g, ' ').trim();
-    if (t.length >= 2 && ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith('“') && t.endsWith('”')))) {
-        t = t.slice(1, -1).trim();
-    }
-    return t;
-}
-
-async function translateCaptionLine(text, sourceLanguage, targetLanguage) {
-    const memoryKey = `${sourceLanguage}|${targetLanguage}|${text.replace(/\s+/g, ' ').trim()}`;
-    if (captionMemory.has(memoryKey)) return captionMemory.get(memoryKey);
-    const resp = await browserAPI.runtime.sendMessage({
-        type: 'TRANSLATE',
-        texts: [{ id: 1, text, priority: 10 }],
-        targetLanguage,
-        sourceLanguage,
-        silentPartials: true
-    });
-    if (!resp) throw new Error('No response from background');
-    if (resp.error) throw new Error(resp.error);
-    const item = (resp.translations || []).find(t => t && t.text && !t.error);
-    if (!item) {
-        const failed = (resp.translations || []).find(t => t && t.error);
-        throw new Error(failed ? failed.error : 'Translation missing in response');
-    }
-    const cleaned = cleanCaptionTranslation(item.text);
-    if (!cleaned) throw new Error('Empty translation');
-    captionMemory.set(memoryKey, cleaned);
-    // Cap the session map so a very long video cannot grow it without bound.
-    if (captionMemory.size > 1000) {
-        const firstKey = captionMemory.keys().next().value;
-        captionMemory.delete(firstKey);
-    }
-    return cleaned;
-}
-
-function enqueueCaptionCue(cue) {
-    if (!cue || cue.status !== 'pending') return;
-    cue.status = 'queued';
-    captionQueue.push(cue);
-    drainCaptionQueue();
-}
-
-async function drainCaptionQueue() {
-    if (captionQueueRunning) return;
-    captionQueueRunning = true;
-    while (captionQueue.length > 0) {
-        const cue = captionQueue.shift();
-        if (!captionState || cue._generation !== captionState.generation) continue;
-        if (cue.status !== 'queued') continue;
-        if (captionState.backoffUntil && Date.now() < captionState.backoffUntil) {
-            cue.status = 'failed';
-            continue;
-        }
-        // If captions were disabled mid-flight, captionState is null — bail out.
-        const gen = captionState.generation;
-        cue.status = 'inflight';
-        updateCaptionOverlay();
-        try {
-            cue.translation = await translateCaptionLine(cue.text, captionState.sourceLanguage, captionState.targetLanguage || currentTargetLanguage);
-            if (captionState && captionState.generation === gen) {
-                cue.status = 'done';
-                captionState.failureCount = 0;
-            }
-        } catch (e) {
-            captionDebug('translation failed:', e && e.message);
-            cue.status = 'failed';
-            cue.translation = '';
-            if (captionState && captionState.generation === gen) {
-                captionState.failureCount++;
-                if (captionState.failureCount >= CAPTION_FAILURE_THRESHOLD) {
-                    captionState.backoffUntil = Date.now() + CAPTION_FAILURE_BACKOFF_MS;
-                    showCaptionStatus(captionIsJapanese()
-                        ? '字幕の翻訳に失敗しました。ローカル LLM を確認してください。'
-                        : 'Caption translation failed. Check your local LLM.');
-                }
-            }
-        }
-        updateCaptionOverlay();
-    }
-    captionQueueRunning = false;
-}
-
-function captionIsJapanese() {
-    return (navigator.language || '').toLowerCase().startsWith('ja');
-}
-
-// Cues are sorted by start time but may overlap (ASR tracks emit several cues
-// inside one another's window), so a plain binary search can land on a cue
-// that has already ended while an earlier, still-running one exists. Find the
-// last cue starting at or before the playhead, then walk back a little for an
-// overlapping window that has not ended yet.
-function findCurrentCue(cues, timeMs) {
-    let lo = 0, hi = cues.length - 1, idx = -1;
-    while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (cues[mid].startMs <= timeMs) { idx = mid; lo = mid + 1; }
-        else hi = mid - 1;
-    }
-    if (idx < 0) return null;
-    if (timeMs < cues[idx].endMs) return cues[idx];
-    const backLimit = Math.max(0, idx - 8);
-    for (let i = idx - 1; i >= backLimit; i--) {
-        if (cues[i].startMs <= timeMs && timeMs < cues[i].endMs) return cues[i];
-    }
-    // A zero-length cue still marks the instant it starts; show it.
-    if (cues[idx].endMs === cues[idx].startMs) return cues[idx];
-    return null;
-}
-
-function ensureOverlay() {
-    if (!captionState) return;
-    if (captionState.overlayHost) {
-        // Player may have been replaced by the SPA — re-attach if detached.
-        if (!captionState.overlayHost.isConnected) attachOverlayHost(captionState.overlayHost);
-        return;
-    }
-    const host = document.createElement('div');
-    host.id = 'lct-caption-overlay';
-    host.setAttribute('translate', 'no');
-    host.style.cssText = 'position:absolute;left:0;right:0;bottom:8%;display:flex;justify-content:center;pointer-events:none;z-index:60;';
-    const root = host.attachShadow({ mode: 'closed' });
-    const style = document.createElement('style');
-    style.textContent = `
-.status{display:none;font:12px/1.4 'YouTube Noto',Roboto,Arial,sans-serif;color:#fff;background:rgba(180,30,30,.85);padding:2px 10px;border-radius:4px;margin-bottom:6px;text-align:center;max-width:80%;}
-.cue-orig{font:400 clamp(11px,1.8vmin,22px)/1.3 'YouTube Noto',Roboto,Arial,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:3px 10px 1px;border-radius:6px 6px 0 0;max-width:88%;text-align:center;white-space:pre-wrap;text-shadow:0 1px 2px rgba(0,0,0,.6);}
-.cue{font:600 clamp(14px,2.4vmin,30px)/1.35 'YouTube Noto',Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif;color:#fff;background:rgba(0,0,0,.72);padding:4px 14px;border-radius:6px;max-width:88%;text-align:center;white-space:pre-wrap;text-shadow:0 1px 2px rgba(0,0,0,.6);}
-.cue[data-pending="1"]{opacity:.85;}
-.cue-orig:empty{display:none;}
-.cue-orig.solo{border-radius:6px;padding-bottom:4px;}
-.wrap{display:flex;flex-direction:column;align-items:center;gap:0;}
-`;
-    const wrap = document.createElement('div');
-    wrap.className = 'wrap';
-    const status = document.createElement('div');
-    status.className = 'status';
-    const orig = document.createElement('div');
-    orig.className = 'cue-orig';
-    orig.textContent = '';
-    const cue = document.createElement('div');
-    cue.className = 'cue';
-    cue.setAttribute('data-pending', '1');
-    cue.textContent = '';
-    wrap.appendChild(status);
-    wrap.appendChild(orig);
-    wrap.appendChild(cue);
-    root.appendChild(style);
-    root.appendChild(wrap);
-    captionState.overlayHost = host;
-    captionState.overlayStatus = status;
-    captionState.overlayOrig = orig;
-    captionState.overlayCue = cue;
-    attachOverlayHost(host);
-}
-
-function attachOverlayHost(host) {
-    const player = getCaptionPlayerContainer();
-    if (!player) return false;
-    const pos = getComputedStyle(player).position;
-    if (pos === 'static') player.style.position = 'relative';
-    player.appendChild(host);
-    return true;
-}
-
-function getCaptionPlayerContainer() {
-    return document.getElementById('movie_player')
-        || document.querySelector('.html5-video-player')
-        || document.querySelector('#player');
-}
-
-function hideNativeCaptions(hide) {
-    const id = 'lct-caption-native-hide';
-    let style = document.getElementById(id);
-    if (hide) {
-        if (!style) {
-            style = document.createElement('style');
-            style.id = id;
-            style.textContent = '.ytp-caption-window-container{display:none !important;}';
-            document.head.appendChild(style);
-        }
-    } else if (style) {
-        style.remove();
-    }
-}
-
-function showCaptionStatus(text) {
-    if (!captionState || !captionState.overlayStatus) return;
-    captionState.overlayStatus.textContent = text || '';
-    captionState.overlayStatus.style.display = text ? 'inline-block' : 'none';
-}
-
-function updateCaptionOverlay() {
-    if (!captionState || !captionState.videoEl) return;
-    ensureOverlay();
-    const video = captionState.videoEl;
-    const timeMs = video.currentTime * 1000;
-    const cue = findCurrentCue(captionState.cues, timeMs);
-    const cueEl = captionState.overlayCue;
-    const origEl = captionState.overlayOrig;
-    if (!cue) {
-        cueEl.textContent = '';
-        if (origEl) origEl.textContent = '';
-        return;
-    }
-    const bilingual = captionMode === 'bilingual' && !(captionState && captionState.isPassthrough);
-    if (origEl) origEl.textContent = bilingual ? cue.text : '';
-    if (cue.status === 'done') {
-        cueEl.textContent = cue.translation || cue.text;
-        cueEl.setAttribute('data-pending', '0');
-        showCaptionStatus('');
-    } else if (cue.status === 'failed') {
-        cueEl.textContent = cue.text;
-        cueEl.setAttribute('data-pending', '0');
-    } else {
-        cueEl.textContent = cue.text;
-        cueEl.setAttribute('data-pending', '1');
-    }
-}
-
-function pumpCaptionPrefetch() {
-    if (!captionState) return;
-    const video = captionState.videoEl;
-    if (!video) return;
-    const nowMs = video.currentTime * 1000;
-    const rate = video.playbackRate && video.playbackRate > 0 ? video.playbackRate : 1;
-    const horizon = nowMs + CAPTION_PREFETCH_AHEAD_MS * rate;
-    for (const cue of captionState.cues) {
-        if (cue.startMs > horizon) break;
-        if (cue.status === 'pending' && cue.endMs > nowMs - 1000) {
-            enqueueCaptionCue(cue);
-        }
-    }
-}
-
-function captionTick() {
-    updateCaptionOverlay();
-    pumpCaptionPrefetch();
-}
-
-function resolveYoutubeVideoId() {
-    try {
-        const u = new URL(location.href);
-        return u.searchParams.get('v') || '';
-    } catch (e) { return ''; }
-}
-
-function teardownCaptionSession() {
-    if (!captionState) return;
-    captionState.generation++;
-    captionQueue.length = 0;
-    captionQueueRunning = false;
-    if (captionState.timer) { clearInterval(captionState.timer); }
-    if (captionState.timeupdateHandler && captionState.videoEl) {
-        captionState.videoEl.removeEventListener('timeupdate', captionState.timeupdateHandler);
-    }
-    if (captionState.seekHandler && captionState.videoEl) {
-        captionState.videoEl.removeEventListener('seeked', captionState.seekHandler);
-    }
-    if (captionState.overlayHost) {
-        captionState.overlayHost.remove();
-    }
-    captionState = null;
-    hideNativeCaptions(false);
-}
-
-function disableYoutubeCaptions(notify = true) {
-    const wasEnabled = !!captionState;
-    teardownCaptionSession();
-    if (notify && wasEnabled) showToast(captionIsJapanese() ? '字幕翻訳をオフにしました' : 'Caption translation disabled');
-    return { ok: true, enabled: false };
-}
-
-async function enableYoutubeCaptions(targetLanguage) {
-    if (!isYoutubeWatchPage()) {
-        return { ok: false, error: captionIsJapanese() ? 'YouTube の動画ページでのみ使えます' : 'Open a YouTube watch page first' };
-    }
-    if (captionState) disableYoutubeCaptions(false);
-    const video = document.querySelector('video');
-    if (!video) {
-        return { ok: false, error: captionIsJapanese() ? '動画プレイヤーが見つかりません' : 'Video player not found' };
-    }
-    ensureCaptionStatePlaceholder(video);
-
-    let info;
-    try {
-        info = await browserAPI.runtime.sendMessage({ type: 'GET_PLAYER_CAPTIONS' });
-    } catch (e) {
-        teardownCaptionSession();
-        return { ok: false, error: String(e && e.message || e) };
-    }
-    if (!info || info.error || !Array.isArray(info.tracks) || info.tracks.length === 0) {
-        teardownCaptionSession();
-        return { ok: false, error: captionIsJapanese()
-            ? '字幕トラックが見つかりません（この動画に字幕があるか確認してください）'
-            : 'No caption tracks found (check that this video has captions)' };
-    }
-
-    const target = normalizeCaptionLangCode(targetLanguage || currentTargetLanguage || 'en');
-    const track = pickCaptionTrack(info.tracks, info.defaultAudioLanguage, target);
-    if (!track) {
-        teardownCaptionSession();
-        return { ok: false, error: captionIsJapanese() ? '使える字幕トラックがありません' : 'No usable caption track' };
-    }
-
-    const sourceLanguage = normalizeCaptionLangCode(track.languageCode) || 'en';
-    captionState.sourceLanguage = sourceLanguage;
-    captionState.track = track;
-    captionState.videoId = info.videoId || resolveYoutubeVideoId();
-    captionState.targetLanguage = target || 'en';
-    captionState.isPassthrough = sourceLanguage === (target || 'en');
-
-    let cues = [];
-    let lastError = null;
-    // Preferred path: let the player load the track and capture the body it
-    // fetched. Only the player can attach the proof-of-origin token, so a bare
-    // GET of the same URL comes back empty on current YouTube.
-    try {
-        const captured = await browserAPI.runtime.sendMessage({
-            type: 'CAPTURE_PLAYER_CAPTIONS',
-            track: {
-                languageCode: track.languageCode,
-                kind: track.kind,
-                vssId: track.vssId,
-                baseUrl: track.baseUrl
-            }
-        });
-        if (captured && captured.ok) {
-            for (const r of captured.responses || []) {
-                const parsed = parseCaptionPayload(r.text);
-                captionDebug('captured caption payload:', r.url ? r.url.slice(0, 80) : '', parsed.length, 'cues');
-                if (parsed.length > cues.length) cues = parsed;
-            }
-        } else if (captured && captured.error) {
-            lastError = new Error(captured.error);
-            captionDebug('player caption capture failed:', captured.error);
-        }
-    } catch (e) {
-        lastError = e;
-        captionDebug('player caption capture threw:', e && e.message);
-    }
-
-    // Fallback: fetch the track directly (works when the baseUrl still carries
-    // a usable token, and keeps older YouTube builds working).
-    const formats = ['json3', 'vtt', 'srv3'];
-    for (const fmt of formats) {
-        if (cues.length) break;
-        for (let attempt = 0; attempt < 2 && !cues.length; attempt++) {
-            try {
-                const url = buildTimedtextUrl(track.baseUrl, fmt);
-                const text = await fetchCaptionText(url);
-                const parsed = parseCaptionPayload(text);
-                captionDebug(`direct timedtext ${fmt} attempt ${attempt + 1}: ${parsed.length} cues, ${(text || '').length} bytes`);
-                if (parsed.length > cues.length) cues = parsed;
-                if (!text || !String(text).trim()) {
-                    lastError = new Error('empty response body');
-                }
-            } catch (e) {
-                lastError = e;
-                captionDebug(`direct timedtext ${fmt} attempt ${attempt + 1} failed:`, e && e.message);
-                await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
-            }
-        }
-    }
-    cues = assembleCaptionCues(cues);
-    if (cues.length === 0) {
-        captionDebug('caption fetch failed', {
-            track: { lang: track.languageCode, kind: track.kind, vssId: track.vssId },
-            lastError: lastError && lastError.message
-        });
-        teardownCaptionSession();
-        return { ok: false, error: captionIsJapanese()
-            ? `字幕を取得できませんでした${lastError ? ` (${lastError.message})` : ''}`
-            : `Could not fetch captions${lastError ? ` (${lastError.message})` : ''}` };
-    }
-
-    const generation = ++captionState.generation;
-    cues.forEach(c => {
-        c._generation = generation;
-        if (captionState.isPassthrough) { c.status = 'done'; c.translation = c.text; }
-        else { c.status = 'pending'; c.translation = ''; }
-    });
-    captionState.cues = cues;
-    captionState.failureCount = 0;
-    captionState.backoffUntil = 0;
-
-    ensureOverlay();
-    if (captionState.overlayCue) {
-        captionState.overlayCue.textContent = '';
-        captionState.overlayCue.setAttribute('data-pending', '1');
-    }
-    hideNativeCaptions(true);
-
-    const handler = () => { updateCaptionOverlay(); pumpCaptionPrefetch(); };
-    const seekHandler = () => {
-        if (!captionState) return;
-        // Do NOT bump generation here — in-flight translations for this video's
-        // cues are still valid after a seek; just drop stale queued work and
-        // refresh the overlay around the new playhead. Cues waiting in the
-        // queue go back to 'pending' so the prefetcher re-enqueues them.
-        for (const cue of captionState.cues) {
-            if (cue.status === 'queued') cue.status = 'pending';
-        }
-        captionQueue.length = 0;
-        updateCaptionOverlay();
-        pumpCaptionPrefetch();
-    };
-    captionState.timeupdateHandler = handler;
-    captionState.seekHandler = seekHandler;
-    video.addEventListener('timeupdate', handler, { passive: true });
-    video.addEventListener('seeked', seekHandler, { passive: true });
-    captionState.timer = setInterval(captionTick, CAPTION_TICK_MS);
-
-    captionTick();
-    showToast(captionIsJapanese() ? '字幕翻訳をオンにしました' : 'Caption translation enabled');
-    return { ok: true, enabled: true, passthrough: captionState.isPassthrough, track: sourceLanguage };
-}
-
-function ensureCaptionStatePlaceholder(video) {
-    captionState = captionState || {};
-    captionState.enabled = true;
-    captionState.videoEl = video;
-    captionState.generation = captionState.generation || 0;
-    captionState.cues = captionState.cues || [];
-    captionState.failureCount = 0;
-    captionState.backoffUntil = 0;
-    captionState.overlayHost = captionState.overlayHost || null;
-    captionState.timeupdateHandler = captionState.timeupdateHandler || null;
-    captionState.timer = captionState.timer || null;
-    captionState.sourceLanguage = captionState.sourceLanguage || 'en';
-}
-
-async function reloadCaptionSessionAfterNavigation() {
-    if (!captionState) return;
-    if (!isYoutubeWatchPage()) { disableYoutubeCaptions(false); return; }
-    const videoId = resolveYoutubeVideoId();
-    if (videoId && captionState.videoId && videoId === captionState.videoId) return;
-    const targetLanguage = captionState.targetLanguage || normalizeCaptionLangCode(currentTargetLanguage);
-    teardownCaptionSession();
-    const result = await enableYoutubeCaptions(targetLanguage);
-    if (!result.ok) captionDebug('caption reload after navigation failed:', result.error);
-}
-
-// The target language changed while a session is running: re-run the session
-// so queued and future cues go to the new language. Translations already shown
-// are dropped rather than left in the previous language mid-video.
-async function rebuildCaptionSessionForLanguage(newLanguage) {
-    if (!captionState) return;
-    const target = normalizeCaptionLangCode(newLanguage);
-    if (!target || target === captionState.targetLanguage) return;
-    const video = captionState.videoEl;
-    const resumeMs = video ? video.currentTime * 1000 : 0;
-    teardownCaptionSession();
-    const result = await enableYoutubeCaptions(newLanguage);
-    if (!result.ok) {
-        captionDebug('caption rebuild for new language failed:', result.error);
-        return;
-    }
-    // Land back near where the viewer was instead of restarting the prefetch
-    // from the top of the video.
-    if (video && resumeMs > 0) {
-        captionQueue.length = 0;
-        pumpCaptionPrefetch();
-    }
-    updateCaptionOverlay();
-}
-
-document.addEventListener('yt-navigate-finish', () => {
-    if (captionState) reloadCaptionSessionAfterNavigation();
-}, { passive: true });
-
-function getYoutubeCaptionStatus() {
-    return {
-        enabled: !!captionState,
-        watchPage: isYoutubeWatchPage(),
-        sourceLanguage: captionState ? captionState.sourceLanguage : null,
-        passthrough: captionState ? !!captionState.isPassthrough : false
-    };
-}

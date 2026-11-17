@@ -133,11 +133,22 @@ Whole-segment matches take priority over the translation cache, and loading or c
 ├── manifest.json      # Extension manifest (MV3)
 ├── background.js      # Background script (LLM API, settings, message routing)
 ├── content.js         # Content script (DOM manipulation)
+├── captions/          # YouTube caption translation
+│   ├── parser.js      # Caption parsing and sentence assembly
+│   ├── fetcher.js     # Caption fetching (via the player, then direct)
+│   └── session.js     # Playback sync, translation queue, overlay
 ├── popup/
 │   ├── popup.html     # Popup UI
 │   ├── popup.css      # Styles (Everforest Dark theme)
 │   └── popup.js       # Popup logic
 └── icons/             # Extension icons
+```
+
+Caption code has two browser-free self-tests:
+
+```
+node tools/caption-selftest.mjs    # parsing, cue assembly, cue lookup
+node tools/caption-wiring-test.mjs # fetch paths and fallbacks
 ```
 
 ## YouTube caption translation (experimental, Phase 1)

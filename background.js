@@ -175,6 +175,15 @@ async function getSettings() {
 
 const CONTENT_SCRIPT_ID = 'llm-translator-content';
 
+// Load order matters: the caption modules attach to window and the page
+// script wires their bridge at the end. They are cheap no-ops off YouTube.
+const CONTENT_SCRIPTS = [
+    'content.js',
+    'captions/parser.js',
+    'captions/fetcher.js',
+    'captions/session.js'
+];
+
 function needsContentScript(settings) {
     return !!(settings && (settings.floatingButton || settings.autoTranslatePages));
 }
@@ -186,7 +195,7 @@ async function syncContentScriptRegistration() {
             await browserAPI.scripting.registerContentScripts([{
                 id: CONTENT_SCRIPT_ID,
                 matches: ['http://*/*', 'https://*/*'],
-                js: ['content.js'],
+                js: CONTENT_SCRIPTS,
                 runAt: 'document_idle'
             }]);
         } catch (e) {
@@ -1994,7 +2003,7 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
                 // If message failed, content script might not be loaded. Inject it.
                 await browserAPI.scripting.executeScript({
                     target: { tabId: tab.id },
-                    files: ['content.js']
+                    files: CONTENT_SCRIPTS
                 });
 
                 // Wait briefly for script to initialize
@@ -2025,7 +2034,7 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
                 await sendToggleMessage();
             } catch (e) {
                 console.log('[Background] Caption toggle message failed, injecting content script:', e);
-                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS });
                 await new Promise(resolve => setTimeout(resolve, 200));
                 await sendToggleMessage();
             }
@@ -2069,7 +2078,7 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
             try {
                 await sendSelectionMessage();
             } catch (e) {
-                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS });
                 await new Promise(resolve => setTimeout(resolve, 200));
                 await sendSelectionMessage();
             }

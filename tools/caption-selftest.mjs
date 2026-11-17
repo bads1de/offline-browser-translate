@@ -1,32 +1,16 @@
-// Self-test for the caption parsing/selection helpers in content.js.
-// Extracts the pure helper block from content.js and exercises it with
-// realistic json3 / vtt payloads. Run: node tools/caption-selftest.mjs
+// Self-test for captions/parser.js.
+// Loads the real module with a tiny DOM shim. Run: node tools/caption-selftest.mjs
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const contentPath = path.join(here, '..', 'content.js');
-const src = fs.readFileSync(contentPath, 'utf8');
+const source = fs.readFileSync(path.join(here, '..', 'captions', 'parser.js'), 'utf8');
 
-const startMarker = 'const CAPTION_MAX_CHARS';
-const endMarker = 'function ensureOverlay';
-const start = src.indexOf(startMarker);
-const end = src.indexOf(endMarker);
-if (start < 0 || end < 0 || end < start) {
-    console.error('Could not locate caption helper block in content.js');
-    process.exit(1);
-}
-const block = src.slice(start, end);
-
-const sandbox = {
-    debugEnabled: false,
-    localStorage: { getItem: () => null },
-    location: { hostname: 'www.youtube.com', pathname: '/watch' },
-    navigator: { language: 'ja-JP' },
-    browserAPI: { runtime: { sendMessage: async () => ({}) } },
-    currentTargetLanguage: 'ja',
-    // Minimal DOMParser stand-in: enough for <p t= d=>text</p> extraction.
+const context = vm.createContext({
+    window: {},
+    URL,
     DOMParser: class {
         parseFromString(str) {
             const items = [];
@@ -34,168 +18,137 @@ const sandbox = {
             let m;
             while ((m = re.exec(str)) !== null) {
                 const attrs = m[1];
-                const t = /\bt="(-?\d+)"/.exec(attrs);
-                const d = /\bd="(-?\d+)"/.exec(attrs);
+                const body = m[2];
                 items.push({
                     getAttribute: (name) => {
-                        if (name === 't') return t ? t[1] : null;
-                        if (name === 'd') return d ? d[1] : null;
-                        return null;
+                        const hit = new RegExp(`\\b${name}="(-?\\d+)"`).exec(attrs);
+                        return hit ? hit[1] : null;
                     },
-                    textContent: m[2].replace(/<[^>]+>/g, '')
+                    textContent: body
+                        .replace(/<[^>]+>/g, '')
+                        .replace(/&amp;/g, '&')
+                        .replace(/&lt;/g, '<')
+                        .replace(/&gt;/g, '>')
+                        .replace(/&quot;/g, '"')
                 });
             }
-            return {
-                getElementsByTagName: (tag) => (tag === 'p' ? items : []),
-                // parse errors are not modelled; malformed XML yields zero <p>
-                querySelector: () => null
-            };
+            return { getElementsByTagName: (tag) => (tag === 'p' ? items : []) };
         }
-    },
-    console
-};
+    }
+});
+vm.runInContext(source, context);
+const P = context.window.LctCaptionParser;
 
-const factory = new Function('sandbox', `
-    const { debugEnabled, localStorage, location, navigator, browserAPI, currentTargetLanguage, DOMParser } = sandbox;
-    ${block}
-    return { pickCaptionTrack, buildTimedtextUrl, parseJson3Captions, parseVttCaptions, assembleCaptionCues, normalizeCaptionLangCode, findCurrentCue, parseCaptionPayload, parseSrv3Captions };
-`);
-const api = factory(sandbox);
-
-let pass = 0;
-let fail = 0;
-function check(name, cond, extra) {
+let pass = 0, fail = 0;
+const check = (name, cond, extra) => {
     if (cond) { pass++; console.log('PASS', name); }
     else { fail++; console.log('FAIL', name, extra === undefined ? '' : JSON.stringify(extra)); }
-}
+};
 
-// normalizeCaptionLangCode
-check('lang: plain', api.normalizeCaptionLangCode('ja') === 'ja');
-check('lang: region', api.normalizeCaptionLangCode('en-US') === 'en');
-check('lang: vss asr id', api.normalizeCaptionLangCode('a.ja') === 'ja');
+// language codes
+check('lang: plain', P.normalizeLangCode('ja') === 'ja');
+check('lang: region', P.normalizeLangCode('en-US') === 'en');
+check('lang: ASR id', P.normalizeLangCode('a.ja') === 'ja');
+check('lang: empty', P.normalizeLangCode('') === '');
 
-// pickCaptionTrack
+// track selection
 const tracks = [
-    { baseUrl: 'u1', languageCode: 'af', kind: '', vssId: '.af' },
-    { baseUrl: 'u2', languageCode: 'en', kind: '', vssId: '.en' },
-    { baseUrl: 'u3', languageCode: 'en', kind: 'asr', vssId: 'a.en' },
-    { baseUrl: 'u4', languageCode: 'ja', kind: 'asr', vssId: 'a.ja' }
+    { baseUrl: 'af', languageCode: 'af', kind: '' },
+    { baseUrl: 'en', languageCode: 'en', kind: '' },
+    { baseUrl: 'en-asr', languageCode: 'en', kind: 'asr' },
+    { baseUrl: 'ja-asr', languageCode: 'ja', kind: 'asr' }
 ];
-check('pick: spoken ASR wins over English manual',
-    api.pickCaptionTrack(tracks, 'ja', 'en').baseUrl === 'u4');
-check('pick: manual preferred over ASR for same language',
-    api.pickCaptionTrack([
-        { baseUrl: 'm1', languageCode: 'en', kind: '', vssId: '.en' },
-        { baseUrl: 'm2', languageCode: 'en', kind: 'asr', vssId: 'a.en' }
-    ], 'en', 'ja').baseUrl === 'm1');
-check('pick: never takes the first translated track when spoken exists',
-    api.pickCaptionTrack(tracks, 'ja', 'en').languageCode === 'ja');
-check('pick: empty list -> null', api.pickCaptionTrack([], 'en', 'ja') === null);
+check('pick: spoken language wins', P.pickTrack(tracks, 'ja', 'en').baseUrl === 'ja-asr');
+check('pick: manual beats ASR', P.pickTrack([
+    { baseUrl: 'm', languageCode: 'en', kind: '' },
+    { baseUrl: 'a', languageCode: 'en', kind: 'asr' }
+], 'en', 'ja').baseUrl === 'm');
+check('pick: english fallback', P.pickTrack([
+    { baseUrl: 'af', languageCode: 'af', kind: '' },
+    { baseUrl: 'en', languageCode: 'en', kind: '' }
+], '', 'ja').baseUrl === 'en');
+check('pick: empty -> null', P.pickTrack([], 'en', 'ja') === null);
 
-// buildTimedtextUrl
-const built = api.buildTimedtextUrl(
-    'https://www.youtube.com/api/timedtext?v=abc&lang=en&fmt=srv3&tlang=ja', 'json3');
-check('url: replaces fmt', built.includes('fmt=json3') && !built.includes('fmt=srv3'), built);
-check('url: strips tlang', !built.includes('tlang'), built);
+// timedtext URL
+const built = P.buildTimedtextUrl('https://www.youtube.com/api/timedtext?v=x&fmt=srv3&tlang=ja', 'json3');
+check('url: fmt replaced', built.includes('fmt=json3') && !built.includes('fmt=srv3'), built);
+check('url: tlang stripped', !built.includes('tlang'), built);
+check('url: garbage input returned as-is', P.buildTimedtextUrl('not a url', 'json3') === 'not a url');
 
-// parseJson3Captions
-const json3 = {
+// parsers
+const json3 = JSON.stringify({
     events: [
         { tStartMs: 0, dDurationMs: 1000, segs: [{ utf8: 'Hello' }] },
         { tStartMs: 1000, dDurationMs: 1000, segs: [{ utf8: 'Hello world' }] },
         { tStartMs: 2000, dDurationMs: 1000, segs: [{ utf8: 'Hello world.' }] },
-        { tStartMs: 3000, dDurationMs: 1000, segs: [{ utf8: 'Next line' }] },
+        { tStartMs: 3000, dDurationMs: 1000, segs: [{ utf8: 'Next' }] },
         { tStartMs: 4000, dDurationMs: 1000, segs: [] }
     ]
-};
-const parsed = api.parseJson3Captions(JSON.stringify(json3));
-check('json3: parses 4 text cues', parsed.length === 4, parsed.length);
-check('json3: normalizes newlines', api.parseJson3Captions(JSON.stringify({
+});
+check('json3: skips empty segs', P.parseJson3(json3).length === 4);
+check('json3: newlines folded', P.parseJson3(JSON.stringify({
     events: [{ tStartMs: 0, dDurationMs: 10, segs: [{ utf8: 'a\nb' }] }]
 }))[0].text === 'a b');
+check('json3: missing events -> []', P.parseJson3('{"events":null}').length === 0);
 
-// assembleCaptionCues
-const assembled = api.assembleCaptionCues(parsed);
-check('assemble: rolling windows collapsed then joined into sentences',
-    assembled.length === 2 && assembled[0].text === 'Hello world.' && assembled[1].text === 'Next line',
+const vtt = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.500\nHello there\n\n00:00:03.500 --> 00:00:06.000\nGeneral Kenobi\n';
+const vttCues = P.parseVtt(vtt);
+check('vtt: cue count', vttCues.length === 2);
+check('vtt: start ms', vttCues[0].startMs === 1000);
+check('vtt: end ms', vttCues[0].endMs === 3500);
+check('vtt: inline tags stripped', P.parseVtt('WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n<v Bob>Hi</v>')[0].text === 'Hi');
+
+const srv3Cues = P.parseSrv3('<timedtext><body><p t="1500" d="2500">Hi <s>there</s></p></body></timedtext>');
+check('srv3: timing', srv3Cues[0].startMs === 1500 && srv3Cues[0].endMs === 4000);
+check('srv3: nested tags flattened', srv3Cues[0].text === 'Hi there');
+check('srv3: entity decoded', P.parseSrv3('<timedtext><body><p t="0" d="1">a &amp; b</p></body></timedtext>')[0].text === 'a & b');
+
+// payload sniffing
+check('payload: empty body', P.parsePayload('').length === 0);
+check('payload: whitespace only', P.parsePayload('  \n ').length === 0);
+check('payload: truncated json', P.parsePayload('{"events":[{"tStartMs":0,').length === 0);
+check('payload: json3', P.parsePayload(json3).length === 4);
+check('payload: vtt', P.parsePayload(vtt).length === 2);
+check('payload: srv3', P.parsePayload('<timedtext><body><p t="1" d="2">x</p></body></timedtext>').length === 1);
+check('payload: unknown shape', P.parsePayload('random text').length === 0);
+
+// assembly
+const assembled = P.assemble(P.parseJson3(json3));
+check('assemble: rolling windows folded into sentences',
+    assembled.length === 2 && assembled[0].text === 'Hello world.' && assembled[1].text === 'Next',
     assembled.map(c => c.text));
 
-const cjk = api.assembleCaptionCues([
+check('assemble: CJK joined without space', P.assemble([
     { startMs: 0, endMs: 500, text: 'これは' },
     { startMs: 500, endMs: 1000, text: 'テストです' }
-]);
-check('assemble: CJK fragments joined without space', cjk[0].text === 'これはテストです', cjk[0].text);
+])[0].text === 'これはテストです');
 
-const twoSentences = api.assembleCaptionCues([
-    { startMs: 0, endMs: 1000, text: 'First one.' },
-    { startMs: 1000, endMs: 2000, text: 'Second one.' }
-]);
-check('assemble: sentence end splits cues', twoSentences.length === 2, twoSentences.length);
+check('assemble: sentence break splits', P.assemble([
+    { startMs: 0, endMs: 1000, text: 'One.' },
+    { startMs: 1000, endMs: 2000, text: 'Two.' }
+]).length === 2);
 
-const longA = Array.from({ length: 40 }, () => 'word').join(' ');
-const longB = Array.from({ length: 40 }, () => 'term').join(' ');
-const longCues = api.assembleCaptionCues([
-    { startMs: 0, endMs: 1000, text: longA },
-    { startMs: 1000, endMs: 2000, text: longB }
-]);
-check('assemble: char cap splits long runs', longCues.length === 2, longCues.map(c => c.text.length));
+const word = 'word '.repeat(50).trim();
+const term = 'term '.repeat(50).trim();
+check('assemble: length cap splits', P.assemble([
+    { startMs: 0, endMs: 1000, text: word },
+    { startMs: 1000, endMs: 2000, text: term }
+]).length === 2);
 
-// parseVttCaptions
-const vtt = `WEBVTT
-
-00:00:01.000 --> 00:00:03.500
-Hello there
-
-00:00:03.500 --> 00:00:06.000
-General Kenobi
-`;
-const vttCues = api.parseVttCaptions(vtt);
-check('vtt: parses 2 cues', vttCues.length === 2, vttCues.length);
-check('vtt: start time ms', vttCues[0].startMs === 1000, vttCues[0].startMs);
-check('vtt: end time ms', vttCues[0].endMs === 3500, vttCues[0].endMs);
-check('vtt: strips inline tags',
-    api.parseVttCaptions('WEBVTT\n\n00:00:00.000 --> 00:00:01.000\n<v Bob>Hi</v>')[0].text === 'Hi');
-
-// findCurrentCue: overlapping (ASR-style) windows
-const overlapCues = [
-    { startMs: 0, endMs: 5000, text: 'long window' },
-    { startMs: 1000, endMs: 1500, text: 'short inside' },
-    { startMs: 2000, endMs: 2500, text: 'another inside' }
+// cue lookup
+const overlapping = [
+    { startMs: 0, endMs: 5000, text: 'long' },
+    { startMs: 1000, endMs: 1500, text: 'short' },
+    { startMs: 2000, endMs: 2500, text: 'inner' }
 ];
-check('find: picks cue covering the playhead',
-    api.findCurrentCue(overlapCues, 2100).text === 'another inside',
-    api.findCurrentCue(overlapCues, 2100));
-check('find: falls back to the still-running earlier cue',
-    api.findCurrentCue(overlapCues, 3000).text === 'long window',
-    api.findCurrentCue(overlapCues, 3000));
-check('find: exactly at a cue start returns that cue',
-    api.findCurrentCue(overlapCues, 0).text === 'long window');
-check('find: gap with no covering cue -> null',
-    api.findCurrentCue([
-        { startMs: 0, endMs: 1000, text: 'a' },
-        { startMs: 3000, endMs: 4000, text: 'b' }
-    ], 2000) === null);
-check('find: empty list -> null', api.findCurrentCue([], 100) === null);
-
-// The reported failure: a 200 with an empty body reached JSON.parse.
-check('payload: empty body -> no cues (no throw)',
-    api.parseCaptionPayload('').length === 0);
-check('payload: whitespace-only body -> no cues',
-    api.parseCaptionPayload('   \n\t ').length === 0);
-check('payload: truncated JSON -> no cues instead of throwing',
-    api.parseCaptionPayload('{"events":[{"tStartMs":0,').length === 0);
-check('payload: sniffed as json3', api.parseCaptionPayload(JSON.stringify(json3)).length === 4);
-check('payload: sniffed as vtt', api.parseCaptionPayload(vtt).length === 2);
-check('payload: sniffed as srv3',
-    api.parseCaptionPayload('<timedtext><body><p t="1000" d="2000">Hi <s>there</s></p></body></timedtext>')[0].text === 'Hi there');
-
-check('srv3: start/end from t and d',
-    (() => {
-        const c = api.parseSrv3Captions('<timedtext><body><p t="1500" d="2500">x</p></body></timedtext>')[0];
-        return c.startMs === 1500 && c.endMs === 4000;
-    })());
-check('srv3: entities decoded into text',
-    api.parseSrv3Captions('<timedtext><body><p t="0" d="1000">a &amp; b</p></body></timedtext>')[0].text.includes('&'));
+check('find: cue under playhead', P.findCue(overlapping, 2100).text === 'inner');
+check('find: falls back to covering cue', P.findCue(overlapping, 3000).text === 'long');
+check('find: exact start', P.findCue(overlapping, 0).text === 'long');
+check('find: gap between cues', P.findCue([
+    { startMs: 0, endMs: 1000, text: 'a' },
+    { startMs: 3000, endMs: 4000, text: 'b' }
+], 2000) === null);
+check('find: empty list', P.findCue([], 100) === null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
