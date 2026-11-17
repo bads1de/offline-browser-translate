@@ -161,6 +161,7 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 ```
 node tools/caption-selftest.mjs    # 解析・連結・キュー検索
 node tools/caption-wiring-test.mjs # 取得経路のフォールバック
+node tools/caption-capture-test.mjs # ページ側フックの設置と解放
 ```
 
 ## 開発

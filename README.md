@@ -144,11 +144,12 @@ Whole-segment matches take priority over the translation cache, and loading or c
 └── icons/             # Extension icons
 ```
 
-Caption code has two browser-free self-tests:
+Caption code has three browser-free self-tests:
 
 ```
 node tools/caption-selftest.mjs    # parsing, cue assembly, cue lookup
 node tools/caption-wiring-test.mjs # fetch paths and fallbacks
+node tools/caption-capture-test.mjs # page-side hook arming and release
 ```
 
 ## YouTube caption translation (experimental, Phase 1)
