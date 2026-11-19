@@ -1842,13 +1842,39 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     break;
                 }
 
+                case 'PROBE_PDF': {
+                    // FR-12: HEAD-probe a URL so the popup can show the PDF button
+                    // on extensionless URLs that serve application/pdf.
+                    try {
+                        const url = message.url;
+                        const Pdf = self.LctPdfParagraphs;
+                        if (!url || !/^https?:/i.test(url)) { sendResponse({ ok: false, isPdf: false }); break; }
+                        if (Pdf?.isPdfUrl(url)) { sendResponse({ ok: true, isPdf: true, contentType: 'application/pdf' }); break; }
+                        const head = await fetch(url, { method: 'HEAD', credentials: 'include', redirect: 'follow' });
+                        const ct = head.headers.get('content-type') || '';
+                        sendResponse({ ok: head.ok, isPdf: head.ok && !!Pdf?.isPdfContentType(ct), contentType: ct, status: head.status });
+                    } catch (e) {
+                        sendResponse({ ok: false, isPdf: false, error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
                 case 'FETCH_PDF': {
                     // FR-1: fetch the PDF bytes with the activeTab grant (invoked
                     // from the popup click) and park them in IndexedDB for the
                     // viewer page. Never send bytes back through the message.
                     try {
                         const url = message.url;
-                        if (!url || !self.LctPdfParagraphs?.isPdfUrl(url)) {
+                        const Pdf = self.LctPdfParagraphs;
+                        let likelyPdf = !!(url && Pdf?.isPdfUrl(url));
+                        if (url && !likelyPdf) {
+                            // FR-12: extensionless URL — HEAD probe for application/pdf.
+                            try {
+                                const head = await fetch(url, { method: 'HEAD', credentials: 'include', redirect: 'follow' });
+                                likelyPdf = head.ok && !!Pdf?.isPdfContentType(head.headers.get('content-type'));
+                            } catch (e) { likelyPdf = false; }
+                        }
+                        if (!likelyPdf) {
                             sendResponse({ ok: false, status: 0, error: 'Not a PDF URL: ' + String(url) });
                             break;
                         }

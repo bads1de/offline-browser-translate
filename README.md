@@ -161,7 +161,7 @@ node tests/caption-wiring-test.mjs # fetch paths and fallbacks
 node tests/caption-capture-test.mjs # page-side hook arming and release
 ```
 
-PDF paragraph recovery has six:
+PDF paragraph recovery has eight:
 
 ```
 node tests/pdf-paragraphs-test.mjs # line rebuild, hyphen healing, 2-column, quality
@@ -170,6 +170,8 @@ node tests/pdf-wiring-test.mjs     # FETCH_PDF wiring (qualified isPdfUrl, %PDF 
 node tests/pdf-bbox-test.mjs       # per-paragraph bounding boxes
 node tests/pdf-layout-test.mjs     # wrapping + fit-to-box sizing
 node tests/pdf-write-test.mjs      # PDF writer structure
+node tests/pdf-head-test.mjs       # FR-12 content-type + wiring
+node tests/pdf-head-functional-test.mjs # FR-12 HEAD probe vs a local server
 ```
 
 ## YouTube caption translation (experimental, Phase 1)
@@ -188,7 +190,7 @@ See [docs/youtube-captions-requirements.md](docs/youtube-captions-requirements.m
 
 Read papers and technical PDFs in your language, on-device. PDF text is sent only to your local LLM — nowhere else.
 
-- **Scope**: local PDFs (file picker / drag & drop in the viewer) and PDF tab URLs ending in `.pdf` (arXiv `/pdf/<id>` links included). Scanned PDFs need OCR (Phase 3+)
+- **Scope**: local PDFs (file picker / drag & drop in the viewer) and PDF tab URLs ending in `.pdf` (arXiv `/pdf/<id>` links included). Extensionless URLs that serve `application/pdf` are detected with a HEAD probe (FR-12). Scanned PDFs need OCR (Phase 3+)
 - **Usage**: open a PDF tab and click **Translate this PDF** in the popup — the viewer opens in a new tab and starts translating. Without file-URL access, open the file from the viewer's drop zone instead
 - **Display**: each page renders as a white sheet. **Overlay** (default) paints the translation at every paragraph's original position so the page looks like the original, in Japanese; **Original** shows the source PDF; **Bilingual** adds a parallel text block. Zoom and dark mode included
 - **How it works**: Mozilla pdf.js (Apache-2.0, vendored under `vendor/pdfjs/`) renders pages and extracts text; paragraphs are rebuilt (line joins, hyphen healing, two-column detection) and translated through the existing TRANSLATE pipeline, so the cache and glossary apply as usual

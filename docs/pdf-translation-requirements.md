@@ -2,7 +2,7 @@
 
 - 対象: 本リポジトリ (Local LLM Translator / offline-browser-translate v2.0.0)
 - 作成日: 2026-11-18
-- ステータス: **Phase 1 + 訳文オーバーレイ / 訳 PDF 書き出し 実装済み (2026-11-19)** — FR-1〜FR-7 / FR-10 / FR-11 に加え、原文レイアウトへの訳文オーバーレイと画像ベース PDF 書き出し。OCR 等 Phase 3 以降は未着手
+- ステータス: **Phase 1 + 訳文オーバーレイ / 訳 PDF 書き出し / FR-12 実装済み (2026-11-19)** — FR-1〜FR-7 / FR-10 / FR-11 / FR-12 (拡張子なし PDF の HEAD 判定) に加え、原文レイアウトへの訳文オーバーレイと画像ベース PDF 書き出し。OCR 等 Phase 3 以降は未着手
 - 配布形態: **個人利用** (ローカルで `chrome://extensions` に読み込む)。ストア公開は考慮しない
 - 参考: OnlyTranslate（只译, GPL-3.0, 読み流し + 原文併置 + オプショナル版面モデル）、Translate It!（Apache-2.0, PDF Translator: 双語ビュー・OCR・export）、FluentRead（GPL-3.0, 文書翻訳 + TXT/MD/HTML export）、PDFMathTranslate / BabelDOC（AGPL-3.0, レイアウト保持再組版 — **設計の参照のみ、コードは一切流用しない**）、Mozilla pdf.js（Apache-2.0, ビューアの土台）、本リポジトリの `docs/youtube-captions-requirements.md`（同種の要件定義の書式）
 
@@ -122,11 +122,12 @@
 
 - PDF ビューアはページ翻訳の ON/OFF とは独立して動く（有効/無効のグローバルスイッチを設けない）
 
-### FR-12 拡張子なし PDF の検出 (Phase 2)
+### FR-12 拡張子なし PDF の検出 (実装済み)
 
 - ポップアップの「この PDF を翻訳」をクリックした時点でバックグラウンドが対象 URL に HEAD を投げ、`Content-Type: application/pdf` なら翻訳フローへ進む
 - `.pdf` 拡張子がなくても動くようにするための経路であり、常時監視はしない（DNR による自動検知は Phase 3 の opt-in で検討、FR-13）
 - HEAD に失敗した場合はエラーを表示
+- **実装 (2026-11-19)**: `PROBE_PDF` メッセージ (HEAD) を追加。ポップアップは拡張子なし http(s) タブで URL 毎に1回 HEAD プローブし、`application/pdf` ならボタンを表示 (`pdfProbeCache`)。`FETCH_PDF` も拡張子なし URL は HEAD で再検証してから GET + %PDF マジック検査。`isPdfContentType` は parameters 付き・大文字小文字を許容。octet-stream 配信の拡張子なし URL は content-type 判定では拾わない (`.pdf` 拡張子ならマジック検査で取得可)
 
 ### FR-13 組み込みビューアの自動リダイレクト (Phase 3、opt-in)
 

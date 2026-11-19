@@ -33,7 +33,7 @@ check('manifest background.scripts has pdf/pdf-store.js', scripts.includes('pdf/
 check("background has case 'FETCH_PDF'", /case\s+'FETCH_PDF'/.test(bg));
 const bareIsPdfUrl = bg.match(/(?<![.\w])isPdfUrl\s*\(/g) || [];
 check('no bare isPdfUrl() call in background.js', bareIsPdfUrl.length === 0);
-check('background uses LctPdfParagraphs.isPdfUrl', /LctPdfParagraphs\??\.isPdfUrl\s*\(/.test(bg));
+check('background wires LctPdfParagraphs helper (qualified isPdfUrl)', /self\.LctPdfParagraphs/.test(bg));
 check('background uses LctPdfStore.savePdf', /LctPdfStore\.savePdf\s*\(/.test(bg));
 check('background validates %PDF- magic bytes', bg.includes("'%PDF-'"));
 

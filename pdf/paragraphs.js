@@ -269,8 +269,17 @@
         return { paragraphs, quality, twoColumn };
     }
 
+    /** FR-12: does a Content-Type header indicate a PDF? (parameters tolerated) */
+    function isPdfContentType(ct) {
+        if (typeof ct !== 'string') return false;
+        const mime = ct.split(';')[0].trim().toLowerCase();
+        return mime === 'application/pdf' || mime === 'application/x-pdf' ||
+            mime === 'application/acrobat' || mime === 'text/pdf' || mime === 'text/x-pdf';
+    }
+
     scope.LctPdfParagraphs = {
         isPdfUrl,
+        isPdfContentType,
         buildLines,
         detectTwoColumns,
         orderLines,

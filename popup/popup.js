@@ -1020,6 +1020,8 @@ async function toggleYoutubeCaptions() {
 // PDF translation (FR-1): only shown on PDF tabs. The local file entry point
 // (FR-4) is always co-located so the feature works without file URL access.
 // ============================================================================
+const pdfProbeCache = new Map();   // FR-12: url -> isPdf (probe once per popup session)
+
 function isPdfTabUrl(url) {
     const P = typeof LctPdfParagraphs !== 'undefined' ? LctPdfParagraphs : null;
     return !!(P && P.isPdfUrl(url));
@@ -1029,19 +1031,27 @@ async function refreshPdfButtons() {
     const btn = elements.pdfTranslateBtn;
     const localBtn = elements.pdfOpenLocalBtn;
     if (!btn || !localBtn) return false;
+    const hide = () => { btn.hidden = true; localBtn.hidden = true; };
     try {
         const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
-        if (!tab || !isPdfTabUrl(tab.url)) {
-            btn.hidden = true;
-            localBtn.hidden = true;
-            return false;
+        if (!tab || !tab.url) { hide(); return false; }
+        if (isPdfTabUrl(tab.url)) { btn.hidden = false; localBtn.hidden = false; return true; }
+        // FR-12: extensionless http(s) URL — HEAD-probe once per URL.
+        if (/^https?:/i.test(tab.url)) {
+            let isPdf = pdfProbeCache.get(tab.url);
+            if (isPdf === undefined) {
+                try {
+                    const resp = await browserAPI.runtime.sendMessage({ type: 'PROBE_PDF', url: tab.url });
+                    isPdf = !!(resp && resp.isPdf);
+                } catch (e) { isPdf = false; }
+                pdfProbeCache.set(tab.url, isPdf);
+            }
+            if (isPdf) { btn.hidden = false; localBtn.hidden = false; return true; }
         }
-        btn.hidden = false;
-        localBtn.hidden = false;
-        return true;
+        hide();
+        return false;
     } catch (e) {
-        btn.hidden = true;
-        localBtn.hidden = true;
+        hide();
         return false;
     }
 }
@@ -1055,7 +1065,7 @@ async function translateThisPdf() {
     const btn = elements.pdfTranslateBtn;
     if (!btn || btn.disabled) return;
     const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
-    if (!tab || !tab.url || !isPdfTabUrl(tab.url)) {
+    if (!tab || !tab.url || !/^(https?|file):/i.test(tab.url)) {
         showToast(t('toast.pdfOnly'), 'error');
         return;
     }

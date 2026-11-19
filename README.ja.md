@@ -143,7 +143,7 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 
 論文や技術資料の PDF を、開いたままオンデバイスで翻訳して読めます。PDF のテキストはローカル LLM にだけ送信され、外部サービスには送られません。
 
-- **対象**: ローカル PDF（ビューアのファイル選択 / ドラッグ&ドロップ）と、`.pdf` で終わるタブ URL（arXiv の `/pdf/<id>` リンク含む）。スキャン PDF の OCR は Phase 3 以降
+- **対象**: ローカル PDF（ビューアのファイル選択 / ドラッグ&ドロップ）と、`.pdf` で終わるタブ URL（arXiv の `/pdf/<id>` リンク含む）。拡張子なしでも `application/pdf` を返す URL は HEAD プローブで判定（FR-12）。スキャン PDF の OCR は Phase 3 以降
 - **使い方**: PDF タブでポップアップを開き、「この PDF を翻訳」を押すとビューアが新しいタブで開き、翻訳を開始します。file URL アクセス未許可なら、ビューアのドロップゾーンから開いてください
 - **表示**: 各ページを白い紙として描画。**訳文**（初期値）は原文の各段落位置に日本語を重ね、原文そのままの見た目で日本語化。**原文**は元 PDF のみ。**対訳**はページ下に対訳テキストを追加。ズームとダークモードあり
 - **仕組み**: Mozilla pdf.js（Apache-2.0、`vendor/pdfjs/` に同梱）でページを描画しテキストを抽出。段落を復元（行連結・ハイフン結合・2カラム判定）してから既存の TRANSLATE パイプラインで翻訳するため、キャッシュや用語集もそのまま効きます
@@ -186,7 +186,7 @@ node tests/caption-wiring-test.mjs # 取得経路のフォールバック
 node tests/caption-capture-test.mjs # ページ側フックの設置と解放
 ```
 
-PDF の段落復元には次の 6 つのテストがあります。
+PDF の段落復元には次の 8 つのテストがあります。
 
 ```
 node tests/pdf-paragraphs-test.mjs # 行復元・ハイフン結合・2カラム・品質判定
@@ -195,6 +195,8 @@ node tests/pdf-wiring-test.mjs     # FETCH_PDF 配線（修飾された isPdfUrl
 node tests/pdf-bbox-test.mjs       # 段落バウンディングボックス
 node tests/pdf-layout-test.mjs     # ラップ + ボックス収めサイズ
 node tests/pdf-write-test.mjs      # PDF ライタ構造
+node tests/pdf-head-test.mjs       # FR-12 content-type + 配線
+node tests/pdf-head-functional-test.mjs # FR-12 HEAD プローブ（ローカルサーバ）
 ```
 
 ## 開発
