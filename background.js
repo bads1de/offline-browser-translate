@@ -1848,7 +1848,7 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     // viewer page. Never send bytes back through the message.
                     try {
                         const url = message.url;
-                        if (!url || !isPdfUrl(url)) {
+                        if (!url || !self.LctPdfParagraphs?.isPdfUrl(url)) {
                             sendResponse({ ok: false, status: 0, error: 'Not a PDF URL: ' + String(url) });
                             break;
                         }
@@ -1860,6 +1860,13 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         const buf = await resp.arrayBuffer();
                         if (buf.byteLength > MAX_PDF_BYTES) {
                             sendResponse({ ok: false, status: 0, size: buf.byteLength, error: 'PDF too large (over 100MB)' });
+                            break;
+                        }
+                        // Reject non-PDF payloads (e.g. a login / soft-404 HTML page
+                        // served at a .pdf URL) before parking them in IndexedDB.
+                        const head = new Uint8Array(buf, 0, Math.min(1024, buf.byteLength));
+                        if (!String.fromCharCode(...head).includes('%PDF-')) {
+                            sendResponse({ ok: false, status: 0, error: 'Server did not return a PDF file' });
                             break;
                         }
                         const name = message.name || (url.split('/').pop() || 'document.pdf').split('?')[0];

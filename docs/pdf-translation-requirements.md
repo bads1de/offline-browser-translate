@@ -2,7 +2,7 @@
 
 - 対象: 本リポジトリ (Local LLM Translator / offline-browser-translate v2.0.0)
 - 作成日: 2026-11-18
-- ステータス: **Phase 1 実装済み (2026-11-19)** — FR-1〜FR-7 / FR-10 / FR-11。Phase 2 以降は未着手
+- ステータス: **Phase 1 + 訳文オーバーレイ / 訳 PDF 書き出し 実装済み (2026-11-19)** — FR-1〜FR-7 / FR-10 / FR-11 に加え、原文レイアウトへの訳文オーバーレイと画像ベース PDF 書き出し。OCR 等 Phase 3 以降は未着手
 - 配布形態: **個人利用** (ローカルで `chrome://extensions` に読み込む)。ストア公開は考慮しない
 - 参考: OnlyTranslate（只译, GPL-3.0, 読み流し + 原文併置 + オプショナル版面モデル）、Translate It!（Apache-2.0, PDF Translator: 双語ビュー・OCR・export）、FluentRead（GPL-3.0, 文書翻訳 + TXT/MD/HTML export）、PDFMathTranslate / BabelDOC（AGPL-3.0, レイアウト保持再組版 — **設計の参照のみ、コードは一切流用しない**）、Mozilla pdf.js（Apache-2.0, ビューアの土台）、本リポジトリの `docs/youtube-captions-requirements.md`（同種の要件定義の書式）
 
@@ -271,6 +271,22 @@
 - **タブ判定**: FR-1 の `.pdf` 拡張子判定に加え、受入基準 #1 を満たすため arXiv の `/pdf/<id>` パスも PDF タブ扱いにした
 - **翻訳キュー**: 段落を 8 個ずつのチャンクで既存 TRANSLATE を順次呼び出し (ページ順=読み順)。部分表示は出さず `silentPartials: true`
 - **失敗時**: 段落は原文のまま表示、2 チャンク連続失敗で 1 行ステータスを表示 (YouTube FR-10 と同方針)
-- **テスト**: `node tests/pdf-paragraphs-test.mjs` (45 件) / `node tests/pdf-extract-test.mjs` (11 件、同梱 pdf.js 実データ)。Node 22 では pdf.js 6.x が使う `Promise.try` / `Uint8Array.prototype.toHex` をテスト側で polyfill している
+- **テスト**: `node tests/pdf-paragraphs-test.mjs` (45 件) / `node tests/pdf-extract-test.mjs` (11 件、同梱 pdf.js 実データ) / `node tests/pdf-wiring-test.mjs` (15 件、FETCH_PDF 配線)。Node 22 では pdf.js 6.x が使う `Promise.try` / `Uint8Array.prototype.toHex` をテスト側で polyfill している
 - **実翻訳の確認**: 実 arXiv PDF (1706.03762, 15 ページ) を同梱 pdf.js で抽出し、拡張の PLaMo リクエスト形式そのまま localhost:9931 の PLaMo 3 Translate 0.8B に投げて日本語訳が出ることを確認済み (Node 経由。初回約 6.7 秒=モデル起動込み、以降 0.16 秒)
 - **残課題**: 実拡張機能を Chrome にロードしてのポップアップ→FETCH_PDF→ビューア経路は、検証に使った Chrome ビルドが `--load-extension` を受け付けず未通過。手動確認が必要。D&D も同様
+
+## 13. 訳文オーバーレイ + 訳 PDF 書き出し 実装メモ (2026-11-19)
+
+ユーザー要望「元の PDF に日本語を張り付け」「翻訳した PDF のダウンロード」「ビュアーを原文に近づけて」を受け、ビューアを canvas ファーストへ再設計した。
+
+- **表示モード (FR-7 を更新)**: `pdfViewMode: 'overlay' | 'original' | 'bilingual'`。初期値 **overlay**。旧 replace / side-by-side は overlay / bilingual へ移行
+  - overlay: 原文ページを白い紙として描画し、各段落の bbox 位置に訳文ボックスを重ねる (原文テキストは背景色でマスク)。原文そのままの見た目で日本語化
+  - original: 原文 PDF のみ
+  - bilingual: 原文ページ + 下に対訳テキスト
+- **段落 bbox**: `paragraphs.js` が各段落に `{x0,x1,top,bottom}` (PDF 座標) を付与。オーバーレイは % ジオメトリで配置し、フォントは `layout.js` の fitText でボックスに収まるよう自動縮小
+  - `layout.js`: CJK 対応ラップ + fit-to-box (純ロジック。measure コールバック注入で Node テスト可能)
+- **白背景**: pdf.js canvas は透明なので、オフスクリーン描画 → 白背景へ合成 (背景采样・JPEG 書き出しが正しくなる)
+- **書き出し**: `pdf-write.js` (依存なし) がページ毎 JPEG を DCTDecode で埋め込んだ PDF 1.4 を生成。「訳 PDF を保存」でダウンロード。**画像ベースのため出力テキストは選択不可**。長い訳文はボックスに収まるよう縮小 (最小 5px、超過はクリップ)
+- **表示バグ修正**: `.pdf-empty` 等の `display:flex` が `hidden` 属性を上書きしていた → `[hidden]{display:none!important}` を追加
+- **テスト**: pdf-bbox (9) / pdf-layout (9) / pdf-write (13) を追加。実 99helpers PDF + 実 PLaMo で 58 段落の日本語オーバーレイと 3 ページ書き出し PDF の生成を確認
+- **制限**: 書き出しはラスター (選択可能テキスト + CJK フォント埋め込みは今後の拡張)。原文より長い訳文は縮小 / クリップされうる

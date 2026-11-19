@@ -141,6 +141,8 @@ Whole-segment matches take priority over the translation cache, and loading or c
 │   ├── viewer.html    # Viewer page (drop zone, toolbar, progress)
 │   ├── viewer.js      # pdf.js wiring, translation queue, modes
 │   ├── viewer.css     # Viewer styles
+│   ├── layout.js      # CJK wrapping + fit-to-box font sizing
+│   ├── pdf-write.js   # Dependency-free JPEG-per-page PDF writer
 │   ├── paragraphs.js  # text items -> reading-order paragraphs
 │   └── pdf-store.js   # IndexedDB handoff for PDF bytes
 ├── vendor/pdfjs/      # Mozilla pdf.js prebuilt (Apache-2.0, see NOTICE)
@@ -159,11 +161,15 @@ node tests/caption-wiring-test.mjs # fetch paths and fallbacks
 node tests/caption-capture-test.mjs # page-side hook arming and release
 ```
 
-PDF paragraph recovery has two:
+PDF paragraph recovery has six:
 
 ```
 node tests/pdf-paragraphs-test.mjs # line rebuild, hyphen healing, 2-column, quality
 node tests/pdf-extract-test.mjs    # real vendored pdf.js -> paragraphs (fixture PDF)
+node tests/pdf-wiring-test.mjs     # FETCH_PDF wiring (qualified isPdfUrl, %PDF guard)
+node tests/pdf-bbox-test.mjs       # per-paragraph bounding boxes
+node tests/pdf-layout-test.mjs     # wrapping + fit-to-box sizing
+node tests/pdf-write-test.mjs      # PDF writer structure
 ```
 
 ## YouTube caption translation (experimental, Phase 1)
@@ -178,15 +184,16 @@ Watch YouTube videos in your language. Caption text is sent only to your local L
 
 See [docs/youtube-captions-requirements.md](docs/youtube-captions-requirements.md) for the spec and limitations.
 
-## PDF translation (Phase 1)
+## PDF translation
 
 Read papers and technical PDFs in your language, on-device. PDF text is sent only to your local LLM — nowhere else.
 
 - **Scope**: local PDFs (file picker / drag & drop in the viewer) and PDF tab URLs ending in `.pdf` (arXiv `/pdf/<id>` links included). Scanned PDFs need OCR (Phase 3+)
 - **Usage**: open a PDF tab and click **Translate this PDF** in the popup — the viewer opens in a new tab and starts translating. Without file-URL access, open the file from the viewer's drop zone instead
-- **Display**: translate-only / bilingual (default) / side-by-side (original page canvas + translation), plus zoom and dark mode
+- **Display**: each page renders as a white sheet. **Overlay** (default) paints the translation at every paragraph's original position so the page looks like the original, in Japanese; **Original** shows the source PDF; **Bilingual** adds a parallel text block. Zoom and dark mode included
 - **How it works**: Mozilla pdf.js (Apache-2.0, vendored under `vendor/pdfjs/`) renders pages and extracts text; paragraphs are rebuilt (line joins, hyphen healing, two-column detection) and translated through the existing TRANSLATE pipeline, so the cache and glossary apply as usual
-- **Note**: layout-preserving re-typesetting of translated PDFs is out of scope by design — use PDFMathTranslate / BabelDOC for that
+- **Export**: **Save translated PDF** paints the translation onto each page and downloads a PDF. It is image-based (JPEG per page), so exported text is not selectable; long translations are auto-shrunk to fit the original text box
+- **Note**: selectable-text export with embedded CJK fonts is a possible future enhancement
 
 See [docs/pdf-translation-requirements.md](docs/pdf-translation-requirements.md) for the full spec and the phase plan.
 

@@ -83,7 +83,7 @@
         let cur = null;
         const flush = () => {
             if (cur && cur.text.trim() !== '') {
-                lines.push({ x0: cur.x0, x1: cur.x1, y: cur.y, fontSize: cur.fs, text: cur.text.trim() });
+                lines.push({ x0: cur.x0, x1: cur.x1, y: cur.y, fontSize: cur.fs, top: cur.y + cur.fs, bottom: cur.y - cur.fs * 0.3, text: cur.text.trim() });
             }
             cur = null;
         };
@@ -222,15 +222,19 @@
                 else if (l.x0 > cur.lastX0 + l.fontSize * 1.2) split = true; // indent
             }
             if (split) {
-                cur = { text: l.text, y: l.y, lastY: l.y, lastX0: l.x0, fontSize: l.fontSize, footnote: isFoot };
+                cur = { text: l.text, y: l.y, lastY: l.y, lastX0: l.x0, fontSize: l.fontSize, footnote: isFoot, x0: l.x0, x1: l.x1, top: l.top, bottom: l.bottom };
                 paras.push(cur);
             } else {
                 cur.text = joinLineText(cur.text, l.text);
                 cur.lastY = l.y;
                 cur.lastX0 = l.x0;
+                cur.x0 = Math.min(cur.x0, l.x0);
+                cur.x1 = Math.max(cur.x1, l.x1);
+                cur.top = Math.max(cur.top, l.top);
+                cur.bottom = Math.min(cur.bottom, l.bottom);
             }
         }
-        return paras.map(p => ({ text: p.text, y: p.y, fontSize: p.fontSize, footnote: p.footnote }));
+        return paras.map(p => ({ text: p.text, y: p.y, fontSize: p.fontSize, footnote: p.footnote, bbox: { x0: p.x0, x1: p.x1, top: p.top, bottom: p.bottom } }));
     }
 
     /**

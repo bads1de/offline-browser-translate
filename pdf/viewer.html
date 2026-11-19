@@ -6,23 +6,24 @@
   <title>PDF 翻訳 — Local LLM Translator</title>
   <link rel="stylesheet" href="viewer.css">
 </head>
-<body data-pdf-mode="bilingual">
+<body data-pdf-mode="overlay">
   <header class="pdf-toolbar">
     <div class="pdf-toolbar-left">
       <strong id="pdfTitle" class="pdf-title">PDF 翻訳</strong>
-      <a id="pdfOriginalLink" class="pdf-original-link" target="_blank" rel="noopener" hidden>元の PDF を開く</a>
+      <a id="pdfOriginalLink" class="pdf-original-link" target="_blank" rel="noopener" hidden>元の PDF</a>
     </div>
     <div class="pdf-toolbar-right">
       <div class="pdf-mode-switch" role="group" aria-label="表示モード">
-        <button type="button" data-mode="replace">訳文のみ</button>
-        <button type="button" data-mode="bilingual" class="active">双語</button>
-        <button type="button" data-mode="side-by-side">原文併置</button>
+        <button type="button" data-mode="overlay" class="active" title="原文のレイアウトに日本語を重ねる">訳文</button>
+        <button type="button" data-mode="original" title="原文 PDF のみ">原文</button>
+        <button type="button" data-mode="bilingual" title="原文ページ + 対訳テキスト">対訳</button>
       </div>
       <div class="pdf-zoom">
         <button type="button" id="zoomOut" title="縮小">−</button>
         <span id="zoomLabel">100%</span>
         <button type="button" id="zoomIn" title="拡大">+</button>
       </div>
+      <button type="button" id="pdfExportBtn" title="日本語を重ねた PDF を保存">訳 PDF を保存</button>
       <button type="button" id="themeToggle" title="テーマ切替">🌙</button>
       <button type="button" id="openPdfBtn">PDF を開く</button>
     </div>
@@ -50,6 +51,8 @@
   </footer>
 
   <script src="../pdf/paragraphs.js"></script>
+  <script src="../pdf/layout.js"></script>
+  <script src="../pdf/pdf-write.js"></script>
   <script src="../pdf/pdf-store.js"></script>
   <script type="module" src="viewer.js"></script>
 </body>
