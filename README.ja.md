@@ -139,6 +139,18 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 
 仕様と制限は [docs/youtube-captions-requirements.md](docs/youtube-captions-requirements.md) を参照してください。
 
+## PDF 翻訳（Phase 1）
+
+論文や技術資料の PDF を、開いたままオンデバイスで翻訳して読めます。PDF のテキストはローカル LLM にだけ送信され、外部サービスには送られません。
+
+- **対象**: ローカル PDF（ビューアのファイル選択 / ドラッグ&ドロップ）と、`.pdf` で終わるタブ URL（arXiv の `/pdf/<id>` リンク含む）。スキャン PDF の OCR は Phase 3 以降
+- **使い方**: PDF タブでポップアップを開き、「この PDF を翻訳」を押すとビューアが新しいタブで開き、翻訳を開始します。file URL アクセス未許可なら、ビューアのドロップゾーンから開いてください
+- **表示**: 訳文のみ / 双語（初期値）/ 原文併置（左に原文ページ canvas、右に訳文）。ズームとダークモードあり
+- **仕組み**: Mozilla pdf.js（Apache-2.0、`vendor/pdfjs/` に同梱）でページを描画しテキストを抽出。段落を復元（行連結・ハイフン結合・2カラム判定）してから既存の TRANSLATE パイプラインで翻訳するため、キャッシュや用語集もそのまま効きます
+- **注意**: レイアウト保持の翻訳済み PDF 再組版は設計上スコープ外です。必要な場合は PDFMathTranslate / BabelDOC を使ってください
+
+仕様とフェーズ計画は [docs/pdf-translation-requirements.md](docs/pdf-translation-requirements.md) を参照してください。
+
 ## ファイル構成
 
 ```
@@ -149,6 +161,13 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 │   ├── parser.js      # 字幕の解析・文単位への連結
 │   ├── fetcher.js     # 字幕の取得（プレイヤー経由 / 直接）
 │   └── session.js     # 再生同期・翻訳キュー・オーバーレイ
+├── pdf/               # PDF 翻訳ビューア
+│   ├── viewer.html    # ビューア画面（ドロップゾーン、ツールバー、進捗）
+│   ├── viewer.js      # pdf.js 配線、翻訳キュー、モード切替
+│   ├── viewer.css     # ビューアのスタイル
+│   ├── paragraphs.js  # テキストアイテム → 読み順段落復元
+│   └── pdf-store.js   # PDF バイト列の IndexedDB 受け渡し
+├── vendor/pdfjs/      # Mozilla pdf.js prebuilt（Apache-2.0、NOTICE 参照）
 ├── popup/
 │   ├── popup.html     # ポップアップ UI
 │   ├── popup.css      # スタイル（Everforest Dark テーマ）
@@ -159,9 +178,16 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 字幕まわりを触ったら、次の自己テストで解析ロジックを検証できます。
 
 ```
-node tools/caption-selftest.mjs    # 解析・連結・キュー検索
-node tools/caption-wiring-test.mjs # 取得経路のフォールバック
-node tools/caption-capture-test.mjs # ページ側フックの設置と解放
+node tests/caption-selftest.mjs    # 解析・連結・キュー検索
+node tests/caption-wiring-test.mjs # 取得経路のフォールバック
+node tests/caption-capture-test.mjs # ページ側フックの設置と解放
+```
+
+PDF の段落復元には次の 2 つのテストがあります。
+
+```
+node tests/pdf-paragraphs-test.mjs # 行復元・ハイフン結合・2カラム・品質判定
+node tests/pdf-extract-test.mjs    # 同梱 pdf.js 実データ → 段落復元（フィクスチャ PDF）
 ```
 
 ## 開発

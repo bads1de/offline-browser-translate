@@ -180,7 +180,6 @@ const OPTIONS_I18N = {
         // Footer
         'footer.save': '💾 Save Settings',
         'footer.reset': '🔄 Reset to Defaults',
-        'footer.issueLink': '🐛 Found a bug? Report it on GitHub',
 
         // Shared picker strings
         'picker.pinned': 'Pinned',
@@ -394,7 +393,6 @@ const OPTIONS_I18N = {
         // フッター
         'footer.save': '💾 設定を保存',
         'footer.reset': '🔄 既定値に戻す',
-        'footer.issueLink': '🐛 バグを見つけた場合は GitHub で報告してください',
 
         // ピッカー共通
         'picker.pinned': 'ピン留め',

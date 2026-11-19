@@ -58,6 +58,8 @@ const elements = {
     youtubeCaptionBtn: document.getElementById('youtubeCaptionBtn'),
     youtubeCaptionBilingual: document.getElementById('youtubeCaptionBilingual'),
     youtubeCaptionModeRow: document.getElementById('youtubeCaptionModeRow'),
+    pdfTranslateBtn: document.getElementById('pdfTranslateBtn'),
+    pdfOpenLocalBtn: document.getElementById('pdfOpenLocalBtn'),
     languagePicker: document.getElementById('languagePicker'),
     langTrigger: document.getElementById('langTrigger'),
     langTriggerLabel: document.getElementById('langTriggerLabel'),
@@ -204,6 +206,7 @@ async function init() {
     await checkTranslationStatus();
     await detectPageLanguage();
     await refreshYoutubeCaptionButton();
+    await refreshPdfButtons();
 }
 
 // ============================================================================
@@ -1013,6 +1016,78 @@ async function toggleYoutubeCaptions() {
     }
 }
 
+// ============================================================================
+// PDF translation (FR-1): only shown on PDF tabs. The local file entry point
+// (FR-4) is always co-located so the feature works without file URL access.
+// ============================================================================
+function isPdfTabUrl(url) {
+    const P = typeof LctPdfParagraphs !== 'undefined' ? LctPdfParagraphs : null;
+    return !!(P && P.isPdfUrl(url));
+}
+
+async function refreshPdfButtons() {
+    const btn = elements.pdfTranslateBtn;
+    const localBtn = elements.pdfOpenLocalBtn;
+    if (!btn || !localBtn) return false;
+    try {
+        const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+        if (!tab || !isPdfTabUrl(tab.url)) {
+            btn.hidden = true;
+            localBtn.hidden = true;
+            return false;
+        }
+        btn.hidden = false;
+        localBtn.hidden = false;
+        return true;
+    } catch (e) {
+        btn.hidden = true;
+        localBtn.hidden = true;
+        return false;
+    }
+}
+
+function openPdfViewer(id) {
+    const url = browserAPI.runtime.getURL('pdf/viewer.html') + (id ? ('?id=' + encodeURIComponent(id)) : '');
+    return browserAPI.tabs.create({ url });
+}
+
+async function translateThisPdf() {
+    const btn = elements.pdfTranslateBtn;
+    if (!btn || btn.disabled) return;
+    const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
+    if (!tab || !tab.url || !isPdfTabUrl(tab.url)) {
+        showToast(t('toast.pdfOnly'), 'error');
+        return;
+    }
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = t('pdf.preparing');
+    try {
+        // Runs with the activeTab grant for this origin (popup was opened by
+        // clicking the toolbar icon), so credentials and cookies apply.
+        const resp = await browserAPI.runtime.sendMessage({ type: 'FETCH_PDF', url: tab.url });
+        if (!resp || !resp.ok) {
+            const err = (resp && resp.error) || 'unknown error';
+            if (resp && resp.status === 403) {
+                showToast(t('toast.pdfForbidden'), 'error', 8000);
+            } else if (resp && resp.size) {
+                showToast(t('toast.pdfTooLarge'), 'error', 8000);
+            } else if (tab.url.startsWith('file://') && (!resp || !resp.status)) {
+                showToast(t('toast.pdfFileHint'), 'error', 8000);
+            } else {
+                showToast(t('toast.pdfFail', { message: err }), 'error', 8000);
+            }
+            return;
+        }
+        await openPdfViewer(resp.id);
+    } catch (e) {
+        showToast(t('toast.pdfFail', { message: e && e.message }), 'error', 8000);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+}
+
 // Toggle translation on/off (uses cached translations if available)
 async function toggleTranslation() {
     try {
@@ -1052,6 +1127,14 @@ function setupEventListeners() {
     // YouTube caption translation (only visible on watch pages)
     if (elements.youtubeCaptionBtn) {
         elements.youtubeCaptionBtn.addEventListener('click', toggleYoutubeCaptions);
+    }
+
+    // PDF translation (only visible on PDF tabs)
+    if (elements.pdfTranslateBtn) {
+        elements.pdfTranslateBtn.addEventListener('click', translateThisPdf);
+    }
+    if (elements.pdfOpenLocalBtn) {
+        elements.pdfOpenLocalBtn.addEventListener('click', () => openPdfViewer(null));
     }
 
     // Bilingual (original + translation) display toggle

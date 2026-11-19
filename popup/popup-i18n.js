@@ -51,6 +51,16 @@ const POPUP_I18N = {
         'youtube.captionOff': 'Translate YouTube captions',
         'youtube.bilingual': 'Show original + translation (bilingual)',
 
+        // PDF translation
+        'pdf.translateBtn': 'Translate this PDF',
+        'pdf.openLocal': 'Open local PDF…',
+        'pdf.preparing': 'Preparing…',
+        'toast.pdfOnly': 'Open a PDF tab first',
+        'toast.pdfFail': 'Could not fetch the PDF: {message}',
+        'toast.pdfForbidden': 'The PDF is blocked (403). Save it with Ctrl/Cmd+S and open it via "Open local PDF…".',
+        'toast.pdfTooLarge': 'This PDF is too large (over 100MB).',
+        'toast.pdfFileHint': 'This is a file:// tab. Allow file URL access for the extension, or open the file via "Open local PDF…".',
+
         // Toasts
         'toast.selectModel': 'Please select a model first',
         'toast.youtubeOnly': 'Open a YouTube video page first',
@@ -150,6 +160,16 @@ const POPUP_I18N = {
         'youtube.captionOn': 'YouTube 字幕: 翻訳中',
         'youtube.captionOff': 'YouTube の字幕を翻訳',
         'youtube.bilingual': '原文と訳を併記する（バイリンガル）',
+
+        // PDF 翻訳
+        'pdf.translateBtn': 'この PDF を翻訳',
+        'pdf.openLocal': 'ローカル PDF を開く…',
+        'pdf.preparing': '準備中…',
+        'toast.pdfOnly': 'PDF タブを開いてから使ってください',
+        'toast.pdfFail': 'PDF を取得できませんでした: {message}',
+        'toast.pdfForbidden': 'PDF がブロックされました (403)。Ctrl/Cmd+S で保存し、「ローカル PDF を開く…」から開いてください。',
+        'toast.pdfTooLarge': 'PDF が大きすぎます (100MB 超)。',
+        'toast.pdfFileHint': 'このタブは file:// です。拡張機能の「ファイルの URL へのアクセス」を許可するか、「ローカル PDF を開く…」から開いてください。',
 
         // トースト
         'toast.selectModel': '先にモデルを選択してください',

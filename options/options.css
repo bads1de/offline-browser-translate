@@ -1188,22 +1188,6 @@ button, .secondary-btn {
     z-index: 20;
 }
 
-.footer-spacer {
-    flex: 1;
-}
-
-.footer-issue-link {
-    font-size: 12px;
-    color: var(--text-secondary);
-    text-decoration: none;
-    white-space: nowrap;
-}
-
-.footer-issue-link:hover {
-    color: var(--accent);
-    text-decoration: underline;
-}
-
 /* ============================================================
    Toast
    ============================================================ */

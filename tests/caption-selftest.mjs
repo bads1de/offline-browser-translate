@@ -1,5 +1,5 @@
 // Self-test for captions/parser.js.
-// Loads the real module with a tiny DOM shim. Run: node tools/caption-selftest.mjs
+// Loads the real module with a tiny DOM shim. Run: node tests/caption-selftest.mjs
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';

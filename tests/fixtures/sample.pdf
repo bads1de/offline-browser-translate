@@ -1,0 +1,51 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 176 >>
+stream
+BT /F1 10 Tf 1 0 0 1 72 700 Tm (We study trans-) Tj ET
+BT /F1 10 Tf 1 0 0 1 72 688 Tm (lation of documents.) Tj ET
+BT /F1 10 Tf 1 0 0 1 72 662 Tm (Second paragraph here.) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 470 >>
+stream
+BT /F1 14 Tf 1 0 0 1 50 750 Tm (A Great Paper Title That Spans Both Columns Of The Page) Tj ET
+BT /F1 10 Tf 1 0 0 1 50 700 Tm (Left column line one.) Tj ET
+BT /F1 10 Tf 1 0 0 1 50 688 Tm (Left column line two.) Tj ET
+BT /F1 10 Tf 1 0 0 1 50 676 Tm (Left column line three.) Tj ET
+BT /F1 10 Tf 1 0 0 1 330 700 Tm (Right column line one.) Tj ET
+BT /F1 10 Tf 1 0 0 1 330 688 Tm (Right column line two.) Tj ET
+BT /F1 10 Tf 1 0 0 1 330 676 Tm (Right column line three.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000474 00000 n 
+0000000600 00000 n 
+0000001121 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1191
+%%EOF

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF 翻訳 — Local LLM Translator</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body data-pdf-mode="bilingual">
+  <header class="pdf-toolbar">
+    <div class="pdf-toolbar-left">
+      <strong id="pdfTitle" class="pdf-title">PDF 翻訳</strong>
+      <a id="pdfOriginalLink" class="pdf-original-link" target="_blank" rel="noopener" hidden>元の PDF を開く</a>
+    </div>
+    <div class="pdf-toolbar-right">
+      <div class="pdf-mode-switch" role="group" aria-label="表示モード">
+        <button type="button" data-mode="replace">訳文のみ</button>
+        <button type="button" data-mode="bilingual" class="active">双語</button>
+        <button type="button" data-mode="side-by-side">原文併置</button>
+      </div>
+      <div class="pdf-zoom">
+        <button type="button" id="zoomOut" title="縮小">−</button>
+        <span id="zoomLabel">100%</span>
+        <button type="button" id="zoomIn" title="拡大">+</button>
+      </div>
+      <button type="button" id="themeToggle" title="テーマ切替">🌙</button>
+      <button type="button" id="openPdfBtn">PDF を開く</button>
+    </div>
+  </header>
+
+  <div id="pdfBanner" class="pdf-banner" hidden></div>
+
+  <main id="pdfMain">
+    <div id="pdfEmpty" class="pdf-empty">
+      <div id="pdfDropzone" class="pdf-dropzone">
+        <p class="pdf-dropzone-main">PDF をここにドロップ</p>
+        <p><button type="button" class="pdf-pick-btn">ファイルを選択…</button></p>
+        <p class="pdf-dropzone-note">翻訳した文章はローカル LLM にだけ送られ、外部には送信されません。</p>
+      </div>
+      <input type="file" id="pdfFileInput" accept="application/pdf,.pdf" hidden>
+    </div>
+    <div id="pdfPages" class="pdf-pages"></div>
+  </main>
+
+  <footer id="pdfProgress" class="pdf-progress" hidden>
+    <span id="pdfProgressText">—</span>
+    <div class="pdf-progress-bar"><div id="pdfProgressBar"></div></div>
+    <button type="button" id="pdfStartBtn">翻訳</button>
+    <button type="button" id="pdfCancelBtn" hidden>キャンセル</button>
+  </footer>
+
+  <script src="../pdf/paragraphs.js"></script>
+  <script src="../pdf/pdf-store.js"></script>
+  <script type="module" src="viewer.js"></script>
+</body>
+</html>

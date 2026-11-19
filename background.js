@@ -8,7 +8,7 @@ const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
 // Import languages (for Service Worker context)
 if (typeof importScripts === 'function') {
-    importScripts('languages.js', 'cache.js');
+    importScripts('languages.js', 'cache.js', 'pdf/paragraphs.js', 'pdf/pdf-store.js');
 }
 
 // ============================================================================
@@ -55,6 +55,8 @@ const DEFAULT_SETTINGS = {
 };
 
 let debugEnabled = false;
+// FR-1/NFR-3: hard cap on PDF bytes we park in IndexedDB (100MB).
+const MAX_PDF_BYTES = 100 * 1024 * 1024;
 function debugLog(...args) { if (debugEnabled) console.log(...args); }
 function debugWarn(...args) { if (debugEnabled) console.warn(...args); }
 
@@ -1836,6 +1838,35 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         sendResponse(payload);
                     } catch (e) {
                         sendResponse({ ok: false, status: 0, text: '', error: e && e.message || String(e) });
+                    }
+                    break;
+                }
+
+                case 'FETCH_PDF': {
+                    // FR-1: fetch the PDF bytes with the activeTab grant (invoked
+                    // from the popup click) and park them in IndexedDB for the
+                    // viewer page. Never send bytes back through the message.
+                    try {
+                        const url = message.url;
+                        if (!url || !isPdfUrl(url)) {
+                            sendResponse({ ok: false, status: 0, error: 'Not a PDF URL: ' + String(url) });
+                            break;
+                        }
+                        const resp = await fetch(url, { credentials: 'include', redirect: 'follow' });
+                        if (!resp.ok) {
+                            sendResponse({ ok: false, status: resp.status, error: 'HTTP ' + resp.status });
+                            break;
+                        }
+                        const buf = await resp.arrayBuffer();
+                        if (buf.byteLength > MAX_PDF_BYTES) {
+                            sendResponse({ ok: false, status: 0, size: buf.byteLength, error: 'PDF too large (over 100MB)' });
+                            break;
+                        }
+                        const name = message.name || (url.split('/').pop() || 'document.pdf').split('?')[0];
+                        const id = await LctPdfStore.savePdf(new Uint8Array(buf), { url, name });
+                        sendResponse({ ok: true, id, size: buf.byteLength });
+                    } catch (e) {
+                        sendResponse({ ok: false, status: 0, error: e && e.message || String(e) });
                     }
                     break;
                 }

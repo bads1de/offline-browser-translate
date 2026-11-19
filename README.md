@@ -137,6 +137,13 @@ Whole-segment matches take priority over the translation cache, and loading or c
 │   ├── parser.js      # Caption parsing and sentence assembly
 │   ├── fetcher.js     # Caption fetching (via the player, then direct)
 │   └── session.js     # Playback sync, translation queue, overlay
+├── pdf/               # PDF translation viewer
+│   ├── viewer.html    # Viewer page (drop zone, toolbar, progress)
+│   ├── viewer.js      # pdf.js wiring, translation queue, modes
+│   ├── viewer.css     # Viewer styles
+│   ├── paragraphs.js  # text items -> reading-order paragraphs
+│   └── pdf-store.js   # IndexedDB handoff for PDF bytes
+├── vendor/pdfjs/      # Mozilla pdf.js prebuilt (Apache-2.0, see NOTICE)
 ├── popup/
 │   ├── popup.html     # Popup UI
 │   ├── popup.css      # Styles (Everforest Dark theme)
@@ -147,9 +154,16 @@ Whole-segment matches take priority over the translation cache, and loading or c
 Caption code has three browser-free self-tests:
 
 ```
-node tools/caption-selftest.mjs    # parsing, cue assembly, cue lookup
-node tools/caption-wiring-test.mjs # fetch paths and fallbacks
-node tools/caption-capture-test.mjs # page-side hook arming and release
+node tests/caption-selftest.mjs    # parsing, cue assembly, cue lookup
+node tests/caption-wiring-test.mjs # fetch paths and fallbacks
+node tests/caption-capture-test.mjs # page-side hook arming and release
+```
+
+PDF paragraph recovery has two:
+
+```
+node tests/pdf-paragraphs-test.mjs # line rebuild, hyphen healing, 2-column, quality
+node tests/pdf-extract-test.mjs    # real vendored pdf.js -> paragraphs (fixture PDF)
 ```
 
 ## YouTube caption translation (experimental, Phase 1)
@@ -163,6 +177,18 @@ Watch YouTube videos in your language. Caption text is sent only to your local L
 - **Note**: The first cues take a few seconds (caption fetch + translation). Only videos that have captions are supported
 
 See [docs/youtube-captions-requirements.md](docs/youtube-captions-requirements.md) for the spec and limitations.
+
+## PDF translation (Phase 1)
+
+Read papers and technical PDFs in your language, on-device. PDF text is sent only to your local LLM — nowhere else.
+
+- **Scope**: local PDFs (file picker / drag & drop in the viewer) and PDF tab URLs ending in `.pdf` (arXiv `/pdf/<id>` links included). Scanned PDFs need OCR (Phase 3+)
+- **Usage**: open a PDF tab and click **Translate this PDF** in the popup — the viewer opens in a new tab and starts translating. Without file-URL access, open the file from the viewer's drop zone instead
+- **Display**: translate-only / bilingual (default) / side-by-side (original page canvas + translation), plus zoom and dark mode
+- **How it works**: Mozilla pdf.js (Apache-2.0, vendored under `vendor/pdfjs/`) renders pages and extracts text; paragraphs are rebuilt (line joins, hyphen healing, two-column detection) and translated through the existing TRANSLATE pipeline, so the cache and glossary apply as usual
+- **Note**: layout-preserving re-typesetting of translated PDFs is out of scope by design — use PDFMathTranslate / BabelDOC for that
+
+See [docs/pdf-translation-requirements.md](docs/pdf-translation-requirements.md) for the full spec and the phase plan.
 
 ## Development
 

@@ -2,7 +2,7 @@
 
 - 対象: 本リポジトリ (Local LLM Translator / offline-browser-translate v2.0.0)
 - 作成日: 2026-11-18
-- ステータス: ドラフト (要件定義) — 未実装
+- ステータス: **Phase 1 実装済み (2026-11-19)** — FR-1〜FR-7 / FR-10 / FR-11。Phase 2 以降は未着手
 - 配布形態: **個人利用** (ローカルで `chrome://extensions` に読み込む)。ストア公開は考慮しない
 - 参考: OnlyTranslate（只译, GPL-3.0, 読み流し + 原文併置 + オプショナル版面モデル）、Translate It!（Apache-2.0, PDF Translator: 双語ビュー・OCR・export）、FluentRead（GPL-3.0, 文書翻訳 + TXT/MD/HTML export）、PDFMathTranslate / BabelDOC（AGPL-3.0, レイアウト保持再組版 — **設計の参照のみ、コードは一切流用しない**）、Mozilla pdf.js（Apache-2.0, ビューアの土台）、本リポジトリの `docs/youtube-captions-requirements.md`（同種の要件定義の書式）
 
@@ -187,7 +187,7 @@
 | `pdf/viewer.js` | pdf.js 初期化、段落復元、翻訳バッチ呼び出し、モード描画、キャンセル（新規） |
 | `pdf/viewer.css` | ビューアスタイル（新規） |
 | `vendor/pdfjs/` | Mozilla pdf.js prebuilt (`pdf.min.mjs`, `pdf.worker.min.mjs`)（新規・git 同梱可、数 MB） |
-| `tools/pdf-*.mjs` | 段落復元・2カラム判定のブラウザフリーユニットテスト（新規） |
+| `tests/pdf-*.mjs` | 段落復元・2カラム判定のブラウザフリーユニットテスト（新規） |
 | `popup/popup.html\|js\|css` | PDF タブ検知で「この PDF を翻訳」ボタンを出す（pdf.js には触れない） |
 | `background.js` | `FETCH_PDF`（activeTab 権限でバイト取得 → IndexedDB 保存）の新メッセージ。翻訳は既存 `TRANSLATE` を再利用 |
 | `manifest.json` | Phase 1〜2: 権限変更なし。Phase 3: `declarativeNetRequest` + `web_accessible_resources` |
@@ -213,7 +213,7 @@
 5. 非 PDF タブでは「この PDF を翻訳」ボタンが表示されない
 6. オフラインでローカル PDF を開いて翻訳できる（LLM が localhost の場合）
 7. 同一 PDF を 2 回開いたとき、翻訳キャッシュにより表示が即座に完了する
-8. 段落復元（行連結・ハイフン結合・2カラム判定）のユニットテストが `node tools/pdf-*.mjs` でパスする
+8. 段落復元（行連結・ハイフン結合・2カラム判定）のユニットテストが `node tests/pdf-*.mjs` でパスする
 9. Phase 3 の自動リダイレクトを有効にした場合、その場で組み込みビューアではなく自前ビューアが開き、ビューア内に「組み込みビューアで開く」リンクがある
 
 ## 8. リスクと対策
@@ -255,3 +255,22 @@
 - **「PDF のページにいってポップアップの翻訳ボタン → 自前ビューアが開いて翻訳済みを表示」が本要件の中核フロー**であり、この方式は組み込みビューアを一切壊さず、権限警告も増やさない（Phase 1〜2 では必須権限追加なし）
 - **「組み込みビューアで開いたら自動で翻訳ビューアに飛ぶ」体験 (FR-13)** は技術的に可能だが、横取り被害・権限警告・個人の DL 意図との衝突を避けるため、Phase 3 の明示 opt-in とし、既定では行わない
 - **"翻訳済み PDF をダウンロードする" という要望の受け皿は FR-14 (印刷→PDF 保存)**であり、レイアウト完全保持の .pdf 生成は本リポジトリの方針に反する（AGPL 依存 + 別プロセス）
+
+---
+
+## 12. Phase 1 実装メモ (2026-11-19)
+
+未決定事項の確定値と実装の目印:
+
+- **表示モード初期値**: 双語 (FR-7 の既定どおり)。`localStorage.pdfViewMode` に保存
+- **原文併置モード**: Phase 1 に含めた (pdf.js でページ canvas は常に描画するため追加コストが小さい)
+- **PDF として保存**: Phase 2 (FR-14) に送った
+- **ソース言語**: 既存設定値を流用 (Phase 1)
+- **還元方針**: Apache-2.0 のみ同梱 (pdf.js 6.5.438)。GPL/AGPL コードは流用せず
+- **ビューア URL**: `pdf/viewer.html?id=<IndexedDB レコード id>`。ファイル選択時は `history.replaceState` で同じ形式に正規化
+- **タブ判定**: FR-1 の `.pdf` 拡張子判定に加え、受入基準 #1 を満たすため arXiv の `/pdf/<id>` パスも PDF タブ扱いにした
+- **翻訳キュー**: 段落を 8 個ずつのチャンクで既存 TRANSLATE を順次呼び出し (ページ順=読み順)。部分表示は出さず `silentPartials: true`
+- **失敗時**: 段落は原文のまま表示、2 チャンク連続失敗で 1 行ステータスを表示 (YouTube FR-10 と同方針)
+- **テスト**: `node tests/pdf-paragraphs-test.mjs` (45 件) / `node tests/pdf-extract-test.mjs` (11 件、同梱 pdf.js 実データ)。Node 22 では pdf.js 6.x が使う `Promise.try` / `Uint8Array.prototype.toHex` をテスト側で polyfill している
+- **実翻訳の確認**: 実 arXiv PDF (1706.03762, 15 ページ) を同梱 pdf.js で抽出し、拡張の PLaMo リクエスト形式そのまま localhost:9931 の PLaMo 3 Translate 0.8B に投げて日本語訳が出ることを確認済み (Node 経由。初回約 6.7 秒=モデル起動込み、以降 0.16 秒)
+- **残課題**: 実拡張機能を Chrome にロードしてのポップアップ→FETCH_PDF→ビューア経路は、検証に使った Chrome ビルドが `--load-extension` を受け付けず未通過。手動確認が必要。D&D も同様

@@ -155,7 +155,7 @@
 
 - YouTube は `pot=`・JSON 形・DOM クラス名を予告なく変える。**src を正規表現で拾わず JSON.parse / DOM API に限定する**
 - ネットワーク・パース例外は全て捕捉して再生を継続させる (再生器を壊さない)
-- **テストはブラウザフリーのユニットテスト** (live youtube.com で CI しない)。sakutto fixture の流用はせず、`tools/caption-selftest.mjs` (parser) / `caption-wiring-test.mjs` (fetch 経路) / `caption-capture-test.mjs` (MAIN world フックの arm/wait/release) で代替した
+- **テストはブラウザフリーのユニットテスト** (live youtube.com で CI しない)。sakutto fixture の流用はせず、`tests/caption-selftest.mjs` (parser) / `caption-wiring-test.mjs` (fetch 経路) / `caption-capture-test.mjs` (MAIN world フックの arm/wait/release) で代替した
 
 ### NFR-4 権限
 
@@ -184,7 +184,7 @@
 | `background.js` | `GET_PLAYER_CAPTIONS` / `CAPTURE_PLAYER_CAPTIONS` / `FETCH_TIMEDTEXT` を追加 (URL はホスト allowlist + パス検証)。翻訳は既存 `TRANSLATE` を再利用 |
 | `manifest.json` | 権限変更なし (Phase 1)。MAIN world の executeScript は `scripting` + `activeTab` で可 |
 | `popup/popup.html|js|css` | YouTube 字幕 ON/OFF・表示モード (置き換え/バイリンガル) の追加 |
-| `tools/caption-*.mjs` | ブラウザ不要のユニットテスト (selftest / wiring / capture) (新規) |
+| `tests/caption-*.mjs` | ブラウザ不要のユニットテスト (selftest / wiring / capture) (新規) |
 | `cache.js` | 変更なし (キュー文字列でそのままキーになる) |
 | `docs/` | 本要件定義。`youtube-captions-design.md` は**作成せず本書の実装メモで代替**してクローズ |
 
@@ -196,7 +196,7 @@
 
 ## 7. 受け入れ基準
 
-検証状況を併記する。ユニットテストは `tools/caption-*.mjs`、実機確認は利用者の環境依存のため未実施のものは「未検証」と明記する。
+検証状況を併記する。ユニットテストは `tests/caption-*.mjs`、実機確認は利用者の環境依存のため未実施のものは「未検証」と明記する。
 
 1. 英語の VOD を開きポップアップで ON にすると、**初回キューは 2 秒以内** (キャッシュ無し・GPU/ローカル LLM 起動済み) に日本語で表示される — **未検証** (実機計測は Phase 3)
 2. 再生速度 2x でも字幕が追従する (ウィンドウ自動拡大) — **実装済み・未計測** (`playbackRate` 比例でウィンドウを拡大)
@@ -223,7 +223,7 @@
 
 - **Phase 0 — スパイク**: 実施済み。bare timedtext GET が空 body しか返さないことを実機で確認し、FR-3 の方式変更に繋がった
 - **Phase 1 — MVP (実装済み)**: FR-1〜FR-5, FR-7 (置き換え), FR-10。手動テスト可能な状態。加えて FR-8 バイリンガルも実装済み。2026-11 に main へマージ済み (PR #1)
-- **Phase 2 — 表示と UX (一部前倒し)**: FR-11 の最小実装 (`yt-navigate-finish` でセッション再作成) は Phase 1 に前倒し実装済み。失敗時のネイティブ字幕退避は「enable 失敗時はネイティブ字幕を隠さない」で代替済み。fixture テストは live youtube.com に接続しない方針を維持したまま、`tools/caption-*.mjs` のブラウザフリーユニットテストで代替
+- **Phase 2 — 表示と UX (一部前倒し)**: FR-11 の最小実装 (`yt-navigate-finish` でセッション再作成) は Phase 1 に前倒し実装済み。失敗時のネイティブ字幕退避は「enable 失敗時はネイティブ字幕を隠さない」で代替済み。fixture テストは live youtube.com に接続しない方針を維持したまま、`tests/caption-*.mjs` のブラウザフリーユニットテストで代替
 - **Phase 3 — 最適化 (未了)**: プリフェッチ (固定 20s × playbackRate) とシーク追従は実装済み。実機計測・長尺動画での調整・GPU/CPU 出し分けは未計測
 - **Phase 4 (将来)**: ライブ対応、DOM `.ytp-caption-segment` フォールバック、表示秒数のオプション露出、`ratechange` 対応、in-flight abort、セッション内メモのビデオ跨ぎ整理、`popstate` 対応、`vssId` フィルタ、8 秒優先度
 
@@ -244,7 +244,7 @@
 3. **`ratechange` 未対応 / in-flight abort なし (FR-6)**: `timeupdate` の 250ms ポーリング + `playbackRate` 比例ウィンドウで実用上追従するため現状維持。seek 時は queued→pending リセットのみ行い、in-flight は再生位置が変わっても同じ文なら有効なのでキャンセルしない
 4. **セッション内メモのキーに videoId を含まない (FR-6)**: 同一タブ内での文の再翻訳を避けるため現状維持。別動画と同一文を共有する副作用は許容
 5. **未実装項目**: `popstate` ハンドラ (FR-3)、vssId による翻訳済みトラック除外 (FR-2)、8 秒優先度 (FR-6) — 需要が出た時点で Phase 4 で再検討
-6. **テスト方式 (NFR-3)**: sakutto fixture の流用はせず、`tools/caption-*.mjs` のブラウザフリーユニットテストで代替した。live youtube.com に接続しない方針は要件どおり
+6. **テスト方式 (NFR-3)**: sakutto fixture の流用はせず、`tests/caption-*.mjs` のブラウザフリーユニットテストで代替した。live youtube.com に接続しない方針は要件どおり
 7. **設計書 (`youtube-captions-design.md`)**: 別途作成はせず、本書が実装のスナップショットを兼ねる形でクローズした
 
 この文書は 2026-11-18 をもってクローズ。以後の変更は新しい要件・設計として別文書または PR で扱うこと。

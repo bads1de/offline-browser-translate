@@ -110,6 +110,16 @@
         <input type="checkbox" id="youtubeCaptionBilingual">
         <span data-i18n="youtube.bilingual">Show original + translation</span>
       </label>
+
+      <!-- PDF translation (FR-1 / FR-4): only on PDF tabs; local entry is always co-located -->
+      <button id="pdfTranslateBtn" class="secondary-btn pdf-translate-btn" type="button" hidden
+        data-i18n="pdf.translateBtn">
+        この PDF を翻訳
+      </button>
+      <button id="pdfOpenLocalBtn" class="secondary-btn pdf-open-local-btn" type="button" hidden
+        data-i18n="pdf.openLocal">
+        ローカル PDF を開く…
+      </button>
     </section>
 
     <!-- Toast Notification -->
@@ -141,6 +151,7 @@
 
   <script src="../languages.js"></script>
   <script src="../i18n.js"></script>
+  <script src="../pdf/paragraphs.js"></script>
   <script src="popup-i18n.js"></script>
   <script src="popup.js"></script>
 </body>
