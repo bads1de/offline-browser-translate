@@ -12,22 +12,7 @@ const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
 const PINNED_LANGUAGES = ['en', 'es', 'fr', 'de', 'zh', 'ja'];
 
-const DEFAULT_SETTINGS = {
-    provider: 'auto',
-    ollamaUrl: 'http://localhost:11434',
-    lmstudioUrl: 'http://localhost:1234',
-    selectedModel: '',
-    targetLanguage: 'en',
-    sourceLanguage: 'auto',
-    maxTokensPerBatch: 2000,
-    maxItemsPerBatch: 8,
-    maxConcurrentRequests: 4,
-    customPrompts: {}, // per-format prompt overrides, edited on the options page
-    requestFormat: 'auto',
-    temperature: 0.3,
-    useStructuredOutput: true,
-    showGlow: false
-};
+// DEFAULT_SETTINGS lives in ../settings.js, shared with the other pages.
 
 // ============================================================================
 // State

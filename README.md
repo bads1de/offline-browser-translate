@@ -174,6 +174,12 @@ node tests/pdf-head-test.mjs       # FR-12 content-type + wiring
 node tests/pdf-head-functional-test.mjs # FR-12 HEAD probe vs a local server
 ```
 
+Settings defaults have one guard:
+
+```
+node tests/settings-keys-test.mjs  # settings.js keys vs. keys the scripts read
+```
+
 ## YouTube caption translation (experimental, Phase 1)
 
 Watch YouTube videos in your language. Caption text is sent only to your local LLM — nowhere else.
