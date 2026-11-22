@@ -184,6 +184,7 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 node tests/caption-selftest.mjs    # 解析・連結・キュー検索
 node tests/caption-wiring-test.mjs # 取得経路のフォールバック
 node tests/caption-capture-test.mjs # ページ側フックの設置と解放
+node tests/caption-session-test.mjs # enable の世代管理・読み込み中キャンセル・旧 drain 停止
 ```
 
 PDF の段落復元には次の 8 つのテストがあります。

@@ -1585,7 +1585,10 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
             (async () => {
                 const captions = captionSession();
                 try {
-                    if (captions.status().enabled) {
+                    const state = captions.status();
+                    // While an enable() is still loading captions, a second press
+                    // means "off": cancel it instead of starting another load.
+                    if (state.enabled || state.enabling) {
                         sendResponse(captions.disable({ notify: false }));
                         return;
                     }

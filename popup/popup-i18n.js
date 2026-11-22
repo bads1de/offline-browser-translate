@@ -48,6 +48,7 @@ const POPUP_I18N = {
         // YouTube captions
         'youtube.captionBtn': 'Translate YouTube captions',
         'youtube.captionOn': 'YouTube captions: translating',
+        'youtube.captionLoading': 'YouTube captions: loading…',
         'youtube.captionOff': 'Translate YouTube captions',
         'youtube.bilingual': 'Show original + translation (bilingual)',
 
@@ -158,6 +159,7 @@ const POPUP_I18N = {
         // YouTube 字幕
         'youtube.captionBtn': 'YouTube の字幕を翻訳',
         'youtube.captionOn': 'YouTube 字幕: 翻訳中',
+        'youtube.captionLoading': 'YouTube 字幕: 読み込み中…',
         'youtube.captionOff': 'YouTube の字幕を翻訳',
         'youtube.bilingual': '原文と訳を併記する（バイリンガル）',
 

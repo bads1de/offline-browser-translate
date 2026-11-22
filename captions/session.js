@@ -28,8 +28,13 @@
     let session = null;   // null while disabled
     let mode = 'replace'; // 'replace' | 'bilingual'
     let memory = new Map();
-    let queue = [];
-    let draining = false;
+    // Bumped by every enable()/disable(). An enable() that is no longer the
+    // newest request must not install a session: the user may have toggled
+    // again or turned captions off while the track list / cues were loading.
+    let enableSeq = 0;
+    // enable() calls that are still loading captions. status().enabling lets
+    // the popup show progress and lets a second toggle cancel the first one.
+    let loading = 0;
 
     const ja = () => (navigator.language || '').toLowerCase().startsWith('ja');
     const t = (en, jp) => (ja() ? jp : en);
@@ -150,15 +155,15 @@
         return out;
     }
 
-    async function translate(text) {
-        const key = `${session.sourceLanguage}|${session.targetLanguage}|${text}`;
+    async function translate(s, text) {
+        const key = `${s.sourceLanguage}|${s.targetLanguage}|${text}`;
         if (memory.has(key)) return memory.get(key);
 
         const res = await Bridge().send({
             type: 'TRANSLATE',
             texts: [{ id: 1, text, priority: 10 }],
-            targetLanguage: session.targetLanguage,
-            sourceLanguage: session.sourceLanguage,
+            targetLanguage: s.targetLanguage,
+            sourceLanguage: s.sourceLanguage,
             silentPartials: true
         });
         if (!res) throw new Error('no response from background');
@@ -178,50 +183,52 @@
     }
 
     function enqueue(cue) {
-        if (!cue || cue.status !== 'pending') return;
+        if (!session || !cue || cue.status !== 'pending') return;
         cue.status = 'queued';
-        queue.push(cue);
-        drain();
+        session.queue.push(cue);
+        drain(session);
     }
 
-    async function drain() {
-        if (draining) return;
-        draining = true;
-        while (queue.length > 0) {
-            const cue = queue.shift();
-            // Session replaced (disable / navigation / language change).
-            if (!session || cue._generation !== session.generation) continue;
-            if (cue.status !== 'queued') continue;
+    // The queue and the draining flag belong to one session object. A loop that
+    // outlives its session sees `s !== session` and stops instead of picking up
+    // cues queued by the replacement session.
+    async function drain(s) {
+        if (!s || s.draining) return;
+        s.draining = true;
+        try {
+            while (s === session && s.queue.length > 0) {
+                const cue = s.queue.shift();
+                if (cue.status !== 'queued') continue;
 
-            if (session.backoffUntil > Date.now()) {
-                cue.status = 'failed';
-                continue;
-            }
-
-            cue.status = 'inflight';
-            paint();
-            try {
-                cue.translation = await translate(cue.text);
-                if (session && cue._generation === session.generation) {
-                    cue.status = 'done';
-                    session.failures = 0;
+                if (s.backoffUntil > Date.now()) {
+                    cue.status = 'failed';
+                    continue;
                 }
-            } catch (e) {
-                debug('translation failed:', e.message);
-                cue.status = 'failed';
-                cue.translation = '';
-                if (session && cue._generation === session.generation) {
-                    session.failures++;
-                    if (session.failures >= FAILURE_THRESHOLD) {
-                        session.backoffUntil = Date.now() + FAILURE_BACKOFF_MS;
+
+                cue.status = 'inflight';
+                paint();
+                try {
+                    cue.translation = await translate(s, cue.text);
+                    if (s !== session) continue;
+                    cue.status = 'done';
+                    s.failures = 0;
+                } catch (e) {
+                    debug('translation failed:', e.message);
+                    cue.status = 'failed';
+                    cue.translation = '';
+                    if (s !== session) continue;
+                    s.failures++;
+                    if (s.failures >= FAILURE_THRESHOLD) {
+                        s.backoffUntil = Date.now() + FAILURE_BACKOFF_MS;
                         setStatus(t('Caption translation failed. Check your local LLM.',
                             '字幕の翻訳に失敗しました。ローカル LLM を確認してください。'));
                     }
                 }
+                paint();
             }
-            paint();
+        } finally {
+            s.draining = false;
         }
-        draining = false;
     }
 
     function prefetch() {
@@ -239,21 +246,24 @@
 
     function teardown() {
         if (!session) return;
-        session.generation++;
-        queue.length = 0;
-        draining = false;
-        clearInterval(session.timer);
-        if (session.handlers && session.video) {
-            session.video.removeEventListener('timeupdate', session.handlers.tick);
-            session.video.removeEventListener('seeked', session.handlers.seek);
-        }
-        if (session.overlay.host) session.overlay.host.remove();
+        const old = session;
+        // Detach first: an in-flight drain() checks identity and must not touch
+        // anything this session owned (including its overlay and timer).
         session = null;
+        old.queue.length = 0;
+        clearInterval(old.timer);
+        if (old.handlers && old.video) {
+            old.video.removeEventListener('timeupdate', old.handlers.tick);
+            old.video.removeEventListener('seeked', old.handlers.seek);
+        }
+        if (old.overlay.host) old.overlay.host.remove();
         hideNativeCaptions(false);
     }
 
     function disable({ notify = true } = {}) {
         const wasEnabled = !!session;
+        // Also cancels an enable() that is still fetching captions.
+        enableSeq++;
         teardown();
         if (notify && wasEnabled) {
             Bridge().toast(t('Caption translation disabled', '字幕翻訳をオフにしました'));
@@ -262,6 +272,17 @@
     }
 
     async function enable(targetLanguage) {
+        loading++;
+        try {
+            return await startSession(targetLanguage);
+        } finally {
+            loading--;
+        }
+    }
+
+    async function startSession(targetLanguage) {
+        const token = ++enableSeq;
+        const cancelled = () => ({ ok: true, cancelled: true, enabled: !!session });
         if (!isWatchPage()) {
             return { ok: false, error: t('Open a YouTube watch page first', 'YouTube の動画ページでのみ使えます') };
         }
@@ -269,14 +290,18 @@
         if (!video) {
             return { ok: false, error: t('Video player not found', '動画プレイヤーが見つかりません') };
         }
-        if (session) disable({ notify: false });
+        // Replace an existing session without going through disable(): that
+        // would bump enableSeq and cancel this very request.
+        if (session) teardown();
 
         let info;
         try {
             info = await Bridge().send({ type: 'GET_PLAYER_CAPTIONS' });
         } catch (e) {
+            if (token !== enableSeq) return cancelled();
             return { ok: false, error: e.message };
         }
+        if (token !== enableSeq) return cancelled();
         if (!info || info.error || !(info.tracks || []).length) {
             return { ok: false, error: t('No caption tracks found (does this video have captions?)',
                 '字幕トラックが見つかりません（この動画に字幕があるか確認してください）') };
@@ -292,8 +317,10 @@
         try {
             cues = await Fetcher.loadCues(track, { onDebug: debug });
         } catch (e) {
+            if (token !== enableSeq) return cancelled();
             return { ok: false, error: `${t('Could not fetch captions', '字幕を取得できませんでした')} (${e.message})` };
         }
+        if (token !== enableSeq) return cancelled();
 
         const sourceLanguage = Parser.normalizeLangCode(track.languageCode) || 'en';
         session = {
@@ -304,7 +331,8 @@
             targetLanguage: target,
             passthrough: sourceLanguage === target,
             cues,
-            generation: 0,
+            queue: [],
+            draining: false,
             failures: 0,
             backoffUntil: 0,
             overlay: { host: null, status: null, orig: null, cue: null },
@@ -312,7 +340,6 @@
             timer: null
         };
         for (const cue of cues) {
-            cue._generation = 0;
             cue.status = session.passthrough ? 'done' : 'pending';
             cue.translation = session.passthrough ? cue.text : '';
         }
@@ -325,7 +352,7 @@
             seek: () => {
                 // Drop stale queued work; in-flight translations stay valid.
                 for (const cue of session.cues) if (cue.status === 'queued') cue.status = 'pending';
-                queue.length = 0;
+                session.queue.length = 0;
                 paint();
                 prefetch();
             }
@@ -350,6 +377,7 @@
     function status() {
         return {
             enabled: !!session,
+            enabling: loading > 0,
             watchPage: isWatchPage(),
             sourceLanguage: session ? session.sourceLanguage : null,
             passthrough: session ? session.passthrough : false

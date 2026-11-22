@@ -155,7 +155,7 @@
 
 - YouTube は `pot=`・JSON 形・DOM クラス名を予告なく変える。**src を正規表現で拾わず JSON.parse / DOM API に限定する**
 - ネットワーク・パース例外は全て捕捉して再生を継続させる (再生器を壊さない)
-- **テストはブラウザフリーのユニットテスト** (live youtube.com で CI しない)。sakutto fixture の流用はせず、`tests/caption-selftest.mjs` (parser) / `caption-wiring-test.mjs` (fetch 経路) / `caption-capture-test.mjs` (MAIN world フックの arm/wait/release) で代替した
+- **テストはブラウザフリーのユニットテスト** (live youtube.com で CI しない)。sakutto fixture の流用はせず、`tests/caption-selftest.mjs` (parser) / `caption-wiring-test.mjs` (fetch 経路) / `caption-capture-test.mjs` (MAIN world フックの arm/wait/release) / `caption-session-test.mjs` (enable の世代管理・読み込み中キャンセル・旧 drain 停止) で代替した
 
 ### NFR-4 権限
 

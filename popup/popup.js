@@ -664,14 +664,18 @@ function isYoutubeWatchUrl(url) {
     return !!url && /^https:\/\/(www\.|m\.)?youtube\.com\/watch/.test(url);
 }
 
-function setCaptionButtonState(active) {
+let youtubeCaptionsActive = false;
+
+function setCaptionButtonState(active, busy = false) {
     const btn = elements.youtubeCaptionBtn;
     if (!btn) return;
+    youtubeCaptionsActive = active;
     btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
     btn.classList.toggle('active', active);
-    btn.textContent = t(active ? 'youtube.captionOn' : 'youtube.captionOff');
+    btn.textContent = t(busy ? 'youtube.captionLoading' : (active ? 'youtube.captionOn' : 'youtube.captionOff'));
     // The display-mode choice only applies while captions are being translated.
-    if (elements.youtubeCaptionModeRow) elements.youtubeCaptionModeRow.hidden = !active;
+    if (elements.youtubeCaptionModeRow) elements.youtubeCaptionModeRow.hidden = !active && !busy;
 }
 
 // Only shown on YouTube watch pages; keeps the popup unchanged elsewhere.
@@ -689,13 +693,16 @@ async function refreshYoutubeCaptionButton() {
         // Only ask if the content script is already resident — do not inject
         // just because the popup was opened on a YouTube tab.
         let active = false;
+        let busy = false;
         try {
             const status = await browserAPI.tabs.sendMessage(tab.id, { type: 'GET_YOUTUBE_CAPTION_STATUS' });
             active = !!(status && status.enabled);
+            // Captions still loading: show progress, and a press will cancel it.
+            busy = !active && !!(status && status.enabling);
         } catch (e) {
             debugLog('[Popup] Caption status check (not injected yet):', e && e.message);
         }
-        setCaptionButtonState(active);
+        setCaptionButtonState(active || busy, busy);
         return true;
     } catch (e) {
         btn.hidden = true;
@@ -736,6 +743,11 @@ async function toggleYoutubeCaptions() {
         await new Promise(r => setTimeout(r, 100));
     }
 
+    // Turning captions on can take a moment (track list + cue fetch); show the
+    // pending state instead of leaving the button on "Translate".
+    const wasActive = youtubeCaptionsActive;
+    if (!wasActive) setCaptionButtonState(true, true);
+
     let response;
     try {
         response = await browserAPI.tabs.sendMessage(tab.id, {
@@ -744,6 +756,7 @@ async function toggleYoutubeCaptions() {
             mode: currentSettings.youtubeCaptionMode || 'replace'
         });
     } catch (e) {
+        setCaptionButtonState(wasActive);
         showToast(t('toast.youtubeFail', { message: e.message }), 'error');
         return;
     }
@@ -751,6 +764,7 @@ async function toggleYoutubeCaptions() {
     if (!response || response.ok === false) {
         // The content script already returns a user-facing sentence, so show it
         // directly rather than wrapping it in the generic failure toast.
+        setCaptionButtonState(wasActive);
         const detail = response && response.error;
         showToast(detail || t('toast.youtubeFail', { message: 'unknown error' }), 'error', 5000);
         return;

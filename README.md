@@ -153,12 +153,13 @@ Whole-segment matches take priority over the translation cache, and loading or c
 └── icons/             # Extension icons
 ```
 
-Caption code has three browser-free self-tests:
+Caption code has four browser-free self-tests:
 
 ```
 node tests/caption-selftest.mjs    # parsing, cue assembly, cue lookup
 node tests/caption-wiring-test.mjs # fetch paths and fallbacks
 node tests/caption-capture-test.mjs # page-side hook arming and release
+node tests/caption-session-test.mjs # enable() ownership, loading cancel, stale drain
 ```
 
 PDF paragraph recovery has eight:
