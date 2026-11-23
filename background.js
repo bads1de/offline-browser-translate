@@ -8,7 +8,7 @@ const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
 // Import shared modules (for Service Worker context)
 if (typeof importScripts === 'function') {
-    importScripts('settings.js', 'languages.js', 'cache.js', 'pdf/paragraphs.js', 'pdf/pdf-store.js');
+    importScripts('settings.js', 'languages.js', 'cache.js', 'provider-transport.js', 'pdf/paragraphs.js', 'pdf/pdf-store.js');
 }
 
 // ============================================================================
@@ -837,32 +837,22 @@ async function callOllama(settings, modelId, systemPrompt, userPrompt, jsonOutpu
     if (settings.temperature !== undefined) body.options.temperature = settings.temperature;
     if (settings.numCtx) body.options.num_ctx = settings.numCtx;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000);
-    let response;
+    let data;
     try {
-        response = await fetch(`${normalizeServerUrl(settings.ollamaUrl)}/api/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal
-        });
+        data = await ProviderTransport.postJson(
+            `${normalizeServerUrl(settings.ollamaUrl)}/api/generate`,
+            body,
+            { timeoutMessage: 'Ollama request timed out after 5 minutes' }
+        );
     } catch (e) {
-        clearTimeout(timeoutId);
-        if (e.name === 'AbortError') throw new Error('Ollama request timed out after 5 minutes');
-        throw e;
-    }
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-        if (response.status === 403) {
+        if (e.status === 403) {
             throw new Error('Ollama returned 403 Forbidden. The extension is being blocked by Ollama\'s CORS policy. You need to enable CORS in Ollama.');
         }
-        const error = await response.text();
-        throw new Error(`Ollama error (${response.status}): ${error || '(empty response)'}`);
+        if (e.status) {
+            throw new Error(`Ollama error (${e.status}): ${e.responseText || '(empty response)'}`);
+        }
+        throw e;
     }
-
-    const data = await response.json();
     // done_reason tells us WHY generation stopped ('stop' = the model chose to end,
     // 'length' = it hit num_predict/context and was cut off mid-output). Only
     // present on newer Ollama versions; undefined on older ones.
@@ -919,39 +909,29 @@ async function callLMStudio(settings, modelId, systemPrompt, userPrompt, jsonOut
         };
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000);
-    let response;
+    let data;
     try {
-        response = await fetch(`${normalizeServerUrl(settings.lmstudioUrl)}/v1/chat/completions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal
-        });
+        data = await ProviderTransport.postJson(
+            `${normalizeServerUrl(settings.lmstudioUrl)}/v1/chat/completions`,
+            body,
+            {
+                timeoutMessage: 'LMStudio request timed out after 5 minutes',
+                connectionErrorMessage: 'Failed to connect to LMStudio. The extension is being blocked by LMStudio\'s CORS policy or the server is offline. You need to enable CORS in LMStudio.'
+            }
+        );
     } catch (e) {
-        clearTimeout(timeoutId);
-        if (e.name === 'AbortError') throw new Error('LMStudio request timed out after 5 minutes');
-        if (e instanceof TypeError) {
-            throw new Error('Failed to connect to LMStudio. The extension is being blocked by LMStudio\'s CORS policy or the server is offline. You need to enable CORS in LMStudio.');
-        }
-        throw e;
-    }
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-        const error = await response.text();
         // Older OpenAI-compatible servers (llama.cpp before mid-2024, older vLLM)
         // reject response_format json_schema with a 400. Retry once without it —
         // the prompt already asks for JSON and the parser tolerates loose output.
-        if (jsonOutput && response.status === 400 && /response_format|json_schema|guided/i.test(error)) {
+        if (e.status === 400 && jsonOutput && /response_format|json_schema|guided/i.test(e.responseText || '')) {
             debugWarn('[Background] Server rejected structured output; retrying without response_format');
             return callLMStudio(settings, modelId, systemPrompt, userPrompt, false);
         }
-        throw new Error(`LMStudio error: ${error}`);
+        if (e.status) {
+            throw new Error(`LMStudio error: ${e.responseText}`);
+        }
+        throw e;
     }
-
-    const data = await response.json();
     let content = data.choices[0]?.message?.content || '';
 
     // Clean up markdown code blocks if present
@@ -990,27 +970,19 @@ async function translatePlamoItem(provider, settings, modelId, text, targetLangC
         if (settings.temperature !== undefined) body.options.temperature = settings.temperature;
         if (settings.numCtx) body.options.num_ctx = settings.numCtx;
         body.options.stop = ['<|plamo:tag|>', '<|plamo:bos|>'];
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000);
-        let response;
+        let data;
         try {
-            response = await fetch(`${normalizeServerUrl(settings.ollamaUrl)}/api/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-                signal: controller.signal
-            });
+            data = await ProviderTransport.postJson(
+                `${normalizeServerUrl(settings.ollamaUrl)}/api/chat`,
+                body,
+                { timeoutMessage: 'Ollama request timed out after 5 minutes' }
+            );
         } catch (e) {
-            clearTimeout(timeoutId);
-            if (e.name === 'AbortError') throw new Error('Ollama request timed out after 5 minutes');
+            if (e.status) {
+                throw new Error(`Ollama error (${e.status}): ${e.responseText || '(empty response)'}`);
+            }
             throw e;
         }
-        clearTimeout(timeoutId);
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Ollama error (${response.status}): ${error || '(empty response)'}`);
-        }
-        const data = await response.json();
         const content = data.message?.content || data.response || '';
         return cleanTranslationText((content || '').trim());
     }
@@ -1023,30 +995,22 @@ async function translatePlamoItem(provider, settings, modelId, text, targetLangC
         stop: ['<|plamo:tag|>', '<|plamo:bos|>'],
         chat_template_kwargs: { target_lang: lang }
     };
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 300000);
-    let response;
+    let data;
     try {
-        response = await fetch(`${normalizeServerUrl(settings.lmstudioUrl)}/v1/chat/completions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal
-        });
+        data = await ProviderTransport.postJson(
+            `${normalizeServerUrl(settings.lmstudioUrl)}/v1/chat/completions`,
+            body,
+            {
+                timeoutMessage: 'Request timed out after 5 minutes',
+                connectionErrorMessage: 'Failed to connect to the server. CORS policy or server offline.'
+            }
+        );
     } catch (e) {
-        clearTimeout(timeoutId);
-        if (e.name === 'AbortError') throw new Error('Request timed out after 5 minutes');
-        if (e instanceof TypeError) {
-            throw new Error('Failed to connect to the server. CORS policy or server offline.');
+        if (e.status) {
+            throw new Error(`Server error (${e.status}): ${e.responseText || '(empty response)'}`);
         }
         throw e;
     }
-    clearTimeout(timeoutId);
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Server error (${response.status}): ${error || '(empty response)'}`);
-    }
-    const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
     return cleanTranslationText((content || '').trim());
 }

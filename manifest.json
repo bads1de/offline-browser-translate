@@ -33,6 +33,7 @@
       "settings.js",
       "languages.js",
       "cache.js",
+      "provider-transport.js",
       "pdf/paragraphs.js",
       "pdf/pdf-store.js",
       "background.js"

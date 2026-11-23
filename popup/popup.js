@@ -4,6 +4,7 @@
 
 // Use browser API with chrome fallback for Firefox compatibility
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
 // Injected in this order; must match background.js CONTENT_SCRIPTS.
 const CONTENT_SCRIPTS = [
@@ -295,10 +296,8 @@ async function checkTranslationStatus() {
 // Load settings from storage
 async function loadSettings() {
     try {
-        const response = await browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' });
-        if (response.settings) {
-            currentSettings = { ...DEFAULT_SETTINGS, ...response.settings };
-        }
+        const settings = await settingsClient.load();
+        currentSettings = { ...DEFAULT_SETTINGS, ...settings };
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
@@ -514,7 +513,7 @@ async function loadModels(forceRefresh = false) {
 
 // Save current settings
 async function saveCurrentSettings() {
-    currentSettings = {
+    const nextSettings = {
         ...currentSettings,
         selectedModel: modelPicker.getValue(),
         pinnedModels: [...modelPicker.pinned],
@@ -525,14 +524,10 @@ async function saveCurrentSettings() {
         // YouTube caption display mode
         youtubeCaptionMode: elements.youtubeCaptionBilingual && elements.youtubeCaptionBilingual.checked ? 'bilingual' : 'replace'
         // Provider, connection URLs, cache, floating button and auto-translate
-        // are managed in the full Settings page; we omit them here so the
-        // background merge keeps whatever was configured there.
+        // are managed in the full Settings page; the patch leaves them untouched.
     };
 
-    await browserAPI.runtime.sendMessage({
-        type: 'SAVE_SETTINGS',
-        settings: currentSettings
-    });
+    currentSettings = await settingsClient.save(nextSettings);
 }
 
 // Reset the translate button back to its idle state
@@ -914,7 +909,7 @@ function setupEventListeners() {
         elements.youtubeCaptionBilingual.addEventListener('change', async () => {
             const mode = elements.youtubeCaptionBilingual.checked ? 'bilingual' : 'replace';
             currentSettings = { ...currentSettings, youtubeCaptionMode: mode };
-            await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
+            currentSettings = await settingsClient.save(currentSettings);
             try {
                 const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
                 if (tab && tab.id && isYoutubeWatchUrl(tab.url)) {

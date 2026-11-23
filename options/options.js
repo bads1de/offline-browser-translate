@@ -4,6 +4,7 @@
 
 // Use browser API with chrome fallback for Firefox compatibility
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
 // DEFAULT_SETTINGS lives in ../settings.js, shared with the other pages.
 
@@ -576,10 +577,8 @@ async function loadModels(forceRefresh = false) {
 // Load settings from storage
 async function loadSettings() {
     try {
-        const response = await browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' });
-        if (response.settings) {
-            currentSettings = { ...DEFAULT_SETTINGS, ...response.settings };
-        }
+        const settings = await settingsClient.load();
+        currentSettings = { ...DEFAULT_SETTINGS, ...settings };
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
@@ -718,7 +717,7 @@ async function saveCurrentSettings() {
         };
     }
 
-    currentSettings = {
+    const nextSettings = {
         ...currentSettings,
         provider: providerPicker.getValue(),
         ollamaUrl: elements.ollamaUrl.value,
@@ -744,10 +743,7 @@ async function saveCurrentSettings() {
         customPrompts: { ...currentSettings.customPrompts, ...promptDrafts }
     };
 
-    await browserAPI.runtime.sendMessage({
-        type: 'SAVE_SETTINGS',
-        settings: currentSettings
-    });
+    currentSettings = await settingsClient.save(nextSettings);
 }
 
 // Parse a TSV glossary into { entries: Array<[source, target]>, target: string }.
@@ -1022,10 +1018,7 @@ function setupEventListeners() {
         currentSettings = { ...DEFAULT_SETTINGS };
         promptDrafts = {};
         activePromptFormat = null;
-        await browserAPI.runtime.sendMessage({
-            type: 'SAVE_SETTINGS',
-            settings: currentSettings
-        });
+        currentSettings = await settingsClient.save(currentSettings);
         // The reset also restores uiLanguage ('auto'), so re-resolve the UI
         // language before repainting.
         setUiLanguage(resolveUiLanguage());
@@ -1278,7 +1271,7 @@ async function applyAllSitesFeature(settingKey, enabled) {
     }
 
     currentSettings[settingKey] = enabled;
-    await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
+    currentSettings = await settingsClient.save(currentSettings);
     await browserAPI.runtime.sendMessage({ type: 'SYNC_CONTENT_SCRIPT' });
 
     // Only hand the permission back when nothing else is still using it.
@@ -1355,7 +1348,7 @@ function renderAutoTranslateLists() {
 }
 
 async function persistAutoTranslateLists() {
-    await browserAPI.runtime.sendMessage({ type: 'SAVE_SETTINGS', settings: currentSettings });
+    currentSettings = await settingsClient.save(currentSettings);
     renderAutoTranslateLists();
 }
 

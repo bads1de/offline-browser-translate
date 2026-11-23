@@ -5,6 +5,7 @@
 
 // Use browser API with chrome fallback for Firefox compatibility
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
+const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
 // ============================================================================
 // Configuration
@@ -524,10 +525,7 @@ async function loadModels() {
 
             // Save the selected model to settings so background.js uses it
             currentSettings.selectedModel = chosen.id;
-            await browserAPI.runtime.sendMessage({
-                type: 'SAVE_SETTINGS',
-                settings: currentSettings
-            });
+            currentSettings = await settingsClient.save(currentSettings);
         }
     } catch (e) {
         console.error('Failed to load models:', e);
@@ -542,10 +540,8 @@ async function loadModels() {
 
 async function loadSettings() {
     try {
-        const response = await browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' });
-        if (response.settings) {
-            currentSettings = { ...DEFAULT_SETTINGS, ...response.settings };
-        }
+        const settings = await settingsClient.load();
+        currentSettings = { ...DEFAULT_SETTINGS, ...settings };
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
