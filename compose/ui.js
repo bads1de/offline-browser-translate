@@ -68,11 +68,32 @@
             button:disabled { cursor: default; opacity: .55; }
             #trigger {
                 position: absolute;
-                min-width: 34px;
-                height: 30px;
-                padding: 3px 7px;
-                font-weight: 700;
+                width: 26px;
+                height: 26px;
+                min-width: 0;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 7px;
+                opacity: .78;
                 box-shadow: 0 2px 10px rgba(0, 0, 0, .22);
+            }
+            #trigger:hover { opacity: 1; }
+            /* display:flex above beats the UA stylesheet's [hidden] rule, so a
+               hidden trigger still painted - at the shadow host's origin
+               (viewport top-left) until the first position() call. */
+            #trigger[hidden] { display: none; }
+            #trigger svg {
+                width: 15px;
+                height: 15px;
+                display: block;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.8;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                pointer-events: none;
             }
             #panel {
                 position: absolute;
@@ -105,10 +126,32 @@
         trigger.id = 'trigger';
         trigger.type = 'button';
         trigger.hidden = true;
-        trigger.textContent = 'あA';
         trigger.addEventListener('mousedown', event => event.preventDefault());
-        trigger.addEventListener('click', () => callbacks.translate?.());
         shadow.appendChild(trigger);
+
+        // Icon-only: a 26px square tucked into the field's top-right corner.
+        // The glyph is inlined SVG so no localization of "あA" is needed, and
+        // the undo state swaps the same glyph for an arrow.
+        const ICONS = {
+            translate: '<path d="M3 5h8M7 5c0 3.2-1.6 6-4.5 8M5 8c.9 2.3 2.6 4 5 5"/>'
+                + '<path d="M10.5 19l3-7 3 7M11.6 16.6h3.8"/>',
+            undo: '<path d="M4 9h8.5a4.5 4.5 0 0 1 0 9H8"/><path d="M7 5.5L3.5 9 7 12.5"/>'
+        };
+
+        function setTriggerIcon(name) {
+            trigger.innerHTML = `<svg viewBox="0 0 20 20" aria-hidden="true">${ICONS[name]}</svg>`;
+            trigger.dataset.action = name === 'undo' ? 'undo' : 'translate';
+        }
+
+        // The icon doubles as an undo button once a translation has been
+        // applied; clicking a button that says "undo" must undo, not start
+        // another translation.
+        trigger.addEventListener('click', () => {
+            if (trigger.dataset.action === 'undo') callbacks.undo?.();
+            else callbacks.translate?.();
+        });
+
+        setTriggerIcon('translate');
 
         const panel = document.createElement('div');
         panel.id = 'panel';
@@ -131,8 +174,8 @@
             const height = view.innerHeight;
 
             if (!trigger.hidden) {
-                trigger.style.left = `${clamp(rect.right - 38, 8, Math.max(8, width - 44))}px`;
-                trigger.style.top = `${clamp(rect.top + 6, 8, Math.max(8, height - 38))}px`;
+                trigger.style.left = `${clamp(rect.right - 32, 8, Math.max(8, width - 34))}px`;
+                trigger.style.top = `${clamp(rect.top + 4, 8, Math.max(8, height - 34))}px`;
             }
             if (!panel.hidden) {
                 const panelWidth = Math.min(360, Math.max(200, width - 16));
@@ -156,12 +199,11 @@
             activeField = field;
             trigger.hidden = false;
             trigger.disabled = !!state.disabled || !!state.busy;
-            trigger.textContent = state.canUndo ? '↶' : 'あA';
+            setTriggerIcon(state.canUndo ? 'undo' : 'translate');
             trigger.title = state.canUndo
                 ? labels.undoTitle
                 : labels.translateTitle(state.targetLabel || state.targetLanguage || '');
             trigger.setAttribute('aria-label', trigger.title);
-            panel.hidden = true;
             position();
         }
 

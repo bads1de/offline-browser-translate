@@ -34,9 +34,20 @@ function createHarness() {
             hidden: false,
             disabled: false,
             textContent: '',
+            _innerHTML: '',
+            get innerHTML() { return element._innerHTML; },
+            set innerHTML(value) {
+                element._innerHTML = String(value);
+                const kind = /M4 9h8\.5/.test(element._innerHTML) ? 'undo' : 'translate';
+                element.children.length = 0;
+                const svg = makeElement('svg');
+                svg.icon = kind;
+                element.appendChild(svg);
+            },
             children: [],
             parent: null,
             attrs: {},
+            dataset: {},
             handlers: new Map(),
             offsetHeight: 120,
             offsetWidth: 320,
@@ -147,8 +158,9 @@ function createHarness() {
     const host = h.documentElement.children.find(child => child.id === 'llm-compose-ui');
     const button = host.shadowRoot.children.find(child => child.tagName === 'BUTTON');
     check('trigger button becomes visible', button?.hidden === false);
-    check('trigger button is labelled for the target language', button?.textContent === 'あA'
-        && button?.title.includes('英語'), button?.title);
+    check('trigger button is labelled for the target language', button?.title.includes('英語'), button?.title);
+    check('trigger shows a translate icon instead of text',
+        button?.textContent === '' && /<svg/.test(button?.innerHTML || ''), button?.innerHTML);
 
     const down = button.dispatch('mousedown');
     check('trigger mousedown preserves field focus', down.defaultPrevented === true);
@@ -157,6 +169,18 @@ function createHarness() {
 
     h.ui.showTrigger(h.field, { targetLabel: '英語', busy: true });
     check('busy trigger is disabled', button.disabled === true);
+
+    h.ui.showTrigger(h.field, { targetLabel: '英語', canUndo: true });
+    check('undo state swaps the icon', /M4 9h8\.5/.test(button.innerHTML), button.innerHTML);
+    check('undo state marks the trigger as an undo action', button.dataset.action === 'undo', button.dataset);
+    button.dispatch('click');
+    check('clicking the undo icon undoes instead of translating',
+        h.calls.undo === 1 && h.calls.translate === 1, h.calls);
+
+    h.ui.showTrigger(h.field, { targetLabel: '英語', canUndo: false });
+    button.dispatch('click');
+    check('trigger returns to translating once undo is gone',
+        h.calls.translate === 2 && h.calls.undo === 1, h.calls);
 }
 
 {
@@ -205,6 +229,30 @@ function createHarness() {
     check('hideAll hides trigger and panel', host.shadowRoot.children
         .filter(child => child.tagName === 'BUTTON' || child.attrs['data-panel'] === 'true')
         .every(child => child.hidden === true));
+}
+
+{
+    const h = createHarness();
+    h.ui.showPreview(h.field, { translation: 'English reply', targetLabel: '英語' });
+    const host = h.documentElement.children.find(child => child.id === 'llm-compose-ui');
+    const panel = host.shadowRoot.children.find(child => child.attrs['data-panel'] === 'true');
+    check('preview is open', panel.hidden === false);
+
+    // The controller refreshes the trigger right after opening a panel (busy
+    // state, undo availability). That refresh must not close what it just opened.
+    h.ui.showTrigger(h.field, { targetLabel: '英語', busy: true, canUndo: false, disabled: true });
+    check('refreshing the trigger keeps an open preview visible', panel.hidden === false);
+    h.ui.hidePanel();
+    check('preview can still be closed explicitly', panel.hidden === true);
+}
+
+{
+    const h = createHarness();
+    h.ui.showError(h.field, { message: 'LLM offline' });
+    const host = h.documentElement.children.find(child => child.id === 'llm-compose-ui');
+    const panel = host.shadowRoot.children.find(child => child.attrs['data-panel'] === 'true');
+    h.ui.showTrigger(h.field, { targetLabel: '英語' });
+    check('refreshing the trigger keeps an error panel visible', panel.hidden === false);
 }
 
 {
