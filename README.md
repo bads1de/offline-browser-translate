@@ -74,7 +74,7 @@ This extension is designed to be privacy-focused:
 - ✅ Only connects to `localhost` - no external network requests, ever
 - ✅ No analytics or tracking
 - ✅ No data collection
-- ✅ Minimal permissions (only `localhost` host permissions)
+- ✅ Minimal permissions: `localhost` access by default, with all-site access requested only for page-wide features such as auto-translate or compose translation
 - ✅ The translation cache is **off by default**. When enabled it is stored **locally** (in memory, or IndexedDB for the persistent mode) and never leaves your machine; it can be set to clear on browser close, turned off, or cleared at any time
 
 ## Settings
@@ -91,6 +91,7 @@ Open the full **Settings** page (the gear icon in the popup header) to configure
 | Show Glow | Toggle visual indicator on translated text |
 | Cache translations | Reuse stored translations for identical text — *off* (default), *until browser close*, or *across sessions*; includes a "Clear cache" button |
 | Automatically translate pages | Translate foreign-language pages on load, with never-lists for languages and sites — *off* by default |
+| Compose translation | Preview and replace translations directly in input fields — *off* by default |
 
 ## Auto-Translate
 
@@ -102,6 +103,22 @@ By default nothing is translated until you ask for it. Turn on **Options → Aut
 - **Exclusions.** Keep a list of languages you already read, and a list of sites to leave alone. Site entries cover subdomains, so `example.com` also excludes `news.example.com`.
 
 This needs permission to run on all websites, since the extension has to be present on a page before you have asked for anything. Bear in mind that every page you open now costs a full translation run on your own hardware.
+
+## Compose Translation
+
+Turn on **Options → Compose Translation**, choose source and target languages, then focus an input field. A small `あA` button appears at the field's upper-right edge.
+
+1. Write your draft and click the button.
+2. Review the translation in the preview, then choose **Replace** to update the draft in place.
+3. Keep editing, or click the undo button to restore the previous draft.
+
+- **Manual only.** Draft text is sent to your local LLM only when you click the translate button; typing never sends it automatically.
+- **Scope.** Textareas and plain-text `contenteditable` fields are supported. Rich-text editors are left untouched and offer a copy-only fallback.
+- **Limits.** Drafts longer than 3,000 Unicode code points are rejected rather than split into requests. Undo is one level and is disabled after you edit the replacement again.
+- **Safety.** Password, OTP, payment, and other sensitive-looking fields, plus hidden, disabled, and read-only fields, are excluded.
+- **Cache.** Existing translation-cache settings apply; with persistent caching enabled, translated drafts may be stored locally in IndexedDB.
+
+See [docs/compose-translation-requirements.md](docs/compose-translation-requirements.md) for the full specification.
 
 ## Translation Cache
 
@@ -133,6 +150,13 @@ Whole-segment matches take priority over the translation cache, and loading or c
 ├── manifest.json      # Extension manifest (MV3)
 ├── background.js      # Background script (LLM API, settings, message routing)
 ├── content.js         # Content script (DOM manipulation)
+├── compose/           # In-place draft translation
+│   ├── policy.js      # Field eligibility and draft limits
+│   ├── session.js     # Preview, replacement, undo, stale-result state
+│   ├── textarea.js    # Textarea reads, writes, and restoration
+│   ├── contenteditable.js # Plain-text contenteditable adapter
+│   ├── ui.js          # Trigger, preview, and action UI
+│   └── controller.js  # Focus, IME, translation, and lifecycle orchestration
 ├── captions/          # YouTube caption translation
 │   ├── parser.js      # Caption parsing and sentence assembly
 │   ├── fetcher.js     # Caption fetching (via the player, then direct)
@@ -179,6 +203,12 @@ Settings defaults have one guard:
 
 ```
 node tests/settings-keys-test.mjs  # settings.js keys vs. keys the scripts read
+```
+
+Compose translation has browser-free suites for policy, sessions, adapters, UI, controller integration, and script wiring:
+
+```
+for test in tests/compose-*.mjs; do node "$test" || exit 1; done
 ```
 
 ## YouTube caption translation (experimental, Phase 1)

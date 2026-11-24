@@ -52,7 +52,10 @@ const DEFAULT_SETTINGS = {
     autoTranslatePages: false,
     autoTranslateNeverLanguages: [], // language codes to leave alone
     autoTranslateNeverSites: [], // hostnames to leave alone (subdomains included)
-    youtubeCaptionMode: 'replace' // 'replace': translated line only / 'bilingual': original + translation
+    youtubeCaptionMode: 'replace', // 'replace': translated line only / 'bilingual': original + translation
+    composeTranslationEnabled: false,
+    composeSourceLanguage: 'auto',
+    composeTargetLanguage: 'en'
 };
 
 // Export for the other classic scripts. The background worker shares this

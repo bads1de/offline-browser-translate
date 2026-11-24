@@ -135,6 +135,18 @@ const elements = {
     floatingButton: document.getElementById('floatingButton'),
     autoTranslatePages: document.getElementById('autoTranslatePages'),
     autoTranslateOptions: document.getElementById('autoTranslateOptions'),
+    composeTranslationEnabled: document.getElementById('composeTranslationEnabled'),
+    composeOptions: document.getElementById('composeOptions'),
+    composeSourceLanguagePickerEl: document.getElementById('composeSourceLanguagePickerEl'),
+    composeSourceLanguageTrigger: document.getElementById('composeSourceLanguageTrigger'),
+    composeSourceLanguageTriggerLabel: document.getElementById('composeSourceLanguageTriggerLabel'),
+    composeSourceLanguageMenu: document.getElementById('composeSourceLanguageMenu'),
+    composeSourceLanguageList: document.getElementById('composeSourceLanguageList'),
+    composeTargetLanguagePickerEl: document.getElementById('composeTargetLanguagePickerEl'),
+    composeTargetLanguageTrigger: document.getElementById('composeTargetLanguageTrigger'),
+    composeTargetLanguageTriggerLabel: document.getElementById('composeTargetLanguageTriggerLabel'),
+    composeTargetLanguageMenu: document.getElementById('composeTargetLanguageMenu'),
+    composeTargetLanguageList: document.getElementById('composeTargetLanguageList'),
     neverLanguagePickerEl: document.getElementById('neverLanguagePickerEl'),
     neverLanguageTrigger: document.getElementById('neverLanguageTrigger'),
     neverLanguageTriggerLabel: document.getElementById('neverLanguageTriggerLabel'),
@@ -285,6 +297,30 @@ const sourceLanguagePicker = createSimpleSelect({
     initialValue: 'auto',
 });
 
+const composeSourceLanguagePicker = createSimpleSelect({
+    els: {
+        picker: elements.composeSourceLanguagePickerEl,
+        trigger: elements.composeSourceLanguageTrigger,
+        label: elements.composeSourceLanguageTriggerLabel,
+        menu: elements.composeSourceLanguageMenu,
+        list: elements.composeSourceLanguageList,
+    },
+    getOptions: () => [{ value: 'auto', label: t('compose.sourceAuto') }, ...sortedLanguageOptions()],
+    initialValue: 'auto',
+});
+
+const composeTargetLanguagePicker = createSimpleSelect({
+    els: {
+        picker: elements.composeTargetLanguagePickerEl,
+        trigger: elements.composeTargetLanguageTrigger,
+        label: elements.composeTargetLanguageTriggerLabel,
+        menu: elements.composeTargetLanguageMenu,
+        list: elements.composeTargetLanguageList,
+    },
+    getOptions: sortedLanguageOptions,
+    initialValue: 'en',
+});
+
 // Localized display label for a request format id (also used by the
 // "Detected for this model" hint).
 function formatOptionLabel(format) {
@@ -350,6 +386,14 @@ const neverLanguagePicker = createSimpleSelect({
 function initSimpleSelects() {
     providerPicker.init();
     sourceLanguagePicker.init();
+    composeSourceLanguagePicker.onChange = (value) => {
+        currentSettings.composeSourceLanguage = value;
+    };
+    composeSourceLanguagePicker.init();
+    composeTargetLanguagePicker.onChange = (value) => {
+        currentSettings.composeTargetLanguage = value;
+    };
+    composeTargetLanguagePicker.init();
     requestFormatPicker.onChange = (value) => {
         updateFormatDescription(value);
         updateVisibility();
@@ -456,6 +500,8 @@ function refreshI18nDynamic() {
     // Simple-select trigger labels come from getOptions() at call time.
     providerPicker.setValue(providerPicker.getValue());
     sourceLanguagePicker.setValue(sourceLanguagePicker.getValue());
+    composeSourceLanguagePicker.setValue(composeSourceLanguagePicker.getValue());
+    composeTargetLanguagePicker.setValue(composeTargetLanguagePicker.getValue());
     requestFormatPicker.setValue(requestFormatPicker.getValue());
     cacheModePicker.setValue(cacheModePicker.getValue());
     glossaryTargetLangPicker.setValue(glossaryTargetLangPicker.getValue());
@@ -615,6 +661,10 @@ function applySettingsToUI() {
     if (elements.autoTranslatePages) {
         elements.autoTranslatePages.checked = !!currentSettings.autoTranslatePages;
     }
+    elements.composeTranslationEnabled.checked = !!currentSettings.composeTranslationEnabled;
+    composeSourceLanguagePicker.setValue(currentSettings.composeSourceLanguage || 'auto');
+    composeTargetLanguagePicker.setValue(currentSettings.composeTargetLanguage || 'en');
+    updateComposeVisibility();
     renderAutoTranslateLists();
 
     // Pickers constructed before the saved UI language was resolved painted
@@ -626,6 +676,12 @@ function applySettingsToUI() {
 
     // Show/hide sections based on format
     updateVisibility();
+}
+
+function updateComposeVisibility() {
+    if (elements.composeOptions) {
+        elements.composeOptions.hidden = !elements.composeTranslationEnabled.checked;
+    }
 }
 
 // The effective format = the explicit choice, or (for 'auto') the one detected
@@ -739,6 +795,9 @@ async function saveCurrentSettings() {
         debug: elements.debugLogging.checked,
         useGlossary: elements.useGlossary ? elements.useGlossary.checked : false,
         floatingButton: elements.floatingButton.checked,
+        composeTranslationEnabled: elements.composeTranslationEnabled.checked,
+        composeSourceLanguage: composeSourceLanguagePicker.getValue(),
+        composeTargetLanguage: composeTargetLanguagePicker.getValue(),
         // Merge in this session's prompt edits, keyed by the format each one belongs to.
         customPrompts: { ...currentSettings.customPrompts, ...promptDrafts }
     };
@@ -1019,6 +1078,15 @@ function setupEventListeners() {
         promptDrafts = {};
         activePromptFormat = null;
         currentSettings = await settingsClient.save(currentSettings);
+        await browserAPI.runtime.sendMessage({ type: 'SYNC_CONTENT_SCRIPT' });
+        if (!currentSettings.floatingButton && !currentSettings.autoTranslatePages
+            && !currentSettings.composeTranslationEnabled) {
+            try {
+                await browserAPI.permissions.remove({ origins: ['<all_urls>'] });
+            } catch (e) {
+                // Permission may already be absent
+            }
+        }
         // The reset also restores uiLanguage ('auto'), so re-resolve the UI
         // language before repainting.
         setUiLanguage(resolveUiLanguage());
@@ -1257,10 +1325,10 @@ document.addEventListener('DOMContentLoaded', init);
 // ============================================================================
 // All-sites permission management
 //
-// The floating button and auto-translate both need content.js present on every
-// page. They share one <all_urls> grant and one script registration, so each
-// toggle only persists its own setting and then asks the background to work out
-// whether the script should still be registered.
+// The floating button, auto-translate, and compose translation all need
+// content.js present on every page. They share one <all_urls> grant and one
+// script registration, so each toggle only persists its own setting and then
+// asks the background to work out whether the script should still be registered.
 // ============================================================================
 
 // True once the setting is saved and (if needed) the permission is granted.
@@ -1275,7 +1343,8 @@ async function applyAllSitesFeature(settingKey, enabled) {
     await browserAPI.runtime.sendMessage({ type: 'SYNC_CONTENT_SCRIPT' });
 
     // Only hand the permission back when nothing else is still using it.
-    if (!enabled && !currentSettings.floatingButton && !currentSettings.autoTranslatePages) {
+    if (!enabled && !currentSettings.floatingButton && !currentSettings.autoTranslatePages
+        && !currentSettings.composeTranslationEnabled) {
         try {
             await browserAPI.permissions.remove({ origins: ['<all_urls>'] });
         } catch (e) {
@@ -1381,6 +1450,20 @@ function normalizeSiteEntry(raw) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    elements.composeTranslationEnabled.addEventListener('change', async (e) => {
+        const enabled = e.target.checked;
+        const ok = await applyAllSitesFeature('composeTranslationEnabled', enabled);
+        if (!ok) {
+            elements.composeTranslationEnabled.checked = false;
+            showToast(t('toast.composeDenied'), 'error');
+            return;
+        }
+        updateComposeVisibility();
+        showToast(enabled
+            ? t('toast.composeEnabled')
+            : t('toast.composeDisabled'));
+    });
+
     elements.floatingButton.addEventListener('change', async (e) => {
         const enabled = e.target.checked;
         const ok = await applyAllSitesFeature('floatingButton', enabled);

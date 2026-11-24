@@ -18,6 +18,7 @@ const OPTIONS_I18N = {
         'nav.provider': 'Provider',
         'nav.translation': 'Translation',
         'nav.autotranslate': 'Auto-Translate',
+        'nav.compose': 'Compose Translation',
         'nav.performance': 'Performance',
         'nav.output': 'Output',
         'nav.cache': 'Cache',
@@ -91,6 +92,18 @@ const OPTIONS_I18N = {
         'autoTranslate.neverSitePart1': 'Subdomains are covered too: ',
         'autoTranslate.neverSitePart2': ' also blocks ',
         'autoTranslate.neverSitePart3': '. The on-page banner can also add sites here.',
+
+        // Compose translation section
+        'compose.sectionTitle': 'Compose Translation',
+        'compose.sectionDesc': 'Translate drafts inside textareas and supported contenteditable fields without leaving the page.',
+        'compose.enableTitle': 'Translate text in input fields',
+        'compose.enableDesc': 'Shows a small translation button near supported input fields. Drafts are sent to your local LLM only when you press it. Enabling this asks for permission to run on all websites.',
+        'compose.sourceLabel': 'Source language',
+        'compose.sourceAuto': 'Auto-detect',
+        'compose.targetLabel': 'Target language',
+        'compose.privacy': 'Typing alone never sends anything. Password, OTP, hidden, disabled, and read-only fields are excluded.',
+        'compose.cacheNote': 'If translation caching is enabled, translated drafts may also be stored in that local cache.',
+        'compose.scopeNote': 'Supports textareas and plain-text contenteditable fields. Rich-text editors offer copy-only fallback.',
 
         // Performance section
         'performance.sectionTitle': '⚡ Performance',
@@ -217,6 +230,9 @@ const OPTIONS_I18N = {
         'toast.autoTranslateDenied': 'Permission denied. Auto-translate not enabled',
         'toast.autoTranslateEnabled': 'Auto-translate enabled. Reload pages to activate',
         'toast.autoTranslateDisabled': 'Auto-translate disabled',
+        'toast.composeDenied': 'Permission denied. Compose translation not enabled',
+        'toast.composeEnabled': 'Compose translation enabled. Reload pages to activate',
+        'toast.composeDisabled': 'Compose translation disabled',
         'toast.alreadyInList': 'Already in the list',
         'toast.invalidHostname': 'Enter a hostname like example.com',
         'confirm.clearGlossary': 'Clear all glossary terms?'
@@ -231,6 +247,7 @@ const OPTIONS_I18N = {
         'nav.provider': 'プロバイダー',
         'nav.translation': '翻訳',
         'nav.autotranslate': '自動翻訳',
+        'nav.compose': '入力欄翻訳',
         'nav.performance': 'パフォーマンス',
         'nav.output': '出力',
         'nav.cache': 'キャッシュ',
@@ -304,6 +321,18 @@ const OPTIONS_I18N = {
         'autoTranslate.neverSitePart1': 'サブドメインも対象です: ',
         'autoTranslate.neverSitePart2': ' は ',
         'autoTranslate.neverSitePart3': ' もブロックします。ページ上のバナーから追加することもできます。',
+
+        // 入力欄翻訳
+        'compose.sectionTitle': '入力欄翻訳',
+        'compose.sectionDesc': 'ページを離れず、textarea や対応する contenteditable 内の下書きを翻訳します。',
+        'compose.enableTitle': '入力欄のテキストを翻訳',
+        'compose.enableDesc': '対応する入力欄の近くに小さな翻訳ボタンを表示します。下書きは押したときだけローカル LLM へ送信されます。有効化時、すべてのウェブサイトでの実行許可を求めます。',
+        'compose.sourceLabel': '翻訳元の言語',
+        'compose.sourceAuto': '自動検出',
+        'compose.targetLabel': '翻訳先の言語',
+        'compose.privacy': '入力中は何も送信されません。パスワード・OTP・hidden・disabled・readonly の欄は除外されます。',
+        'compose.cacheNote': '翻訳キャッシュが有効な場合、翻訳された下書きもそのローカルキャッシュに保存されることがあります。',
+        'compose.scopeNote': 'textarea とプレーンテキストの contenteditable に対応します。リッチテキスト欄は訳文コピーに退避します。',
 
         // パフォーマンス
         'performance.sectionTitle': '⚡ パフォーマンス',
@@ -430,6 +459,9 @@ const OPTIONS_I18N = {
         'toast.autoTranslateDenied': '権限が拒否されました。自動翻訳は有効化されていません',
         'toast.autoTranslateEnabled': '自動翻訳を有効化しました。ページを再読み込みすると反映されます',
         'toast.autoTranslateDisabled': '自動翻訳を無効化しました',
+        'toast.composeDenied': '権限が拒否されました。入力欄翻訳は有効化されていません',
+        'toast.composeEnabled': '入力欄翻訳を有効化しました。ページを再読み込みすると反映されます',
+        'toast.composeDisabled': '入力欄翻訳を無効化しました',
         'toast.alreadyInList': '既にリストに含まれています',
         'toast.invalidHostname': 'example.com のようなホスト名を入力してください',
         'confirm.clearGlossary': 'すべての用語集の項目を消去しますか？'

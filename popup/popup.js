@@ -8,6 +8,12 @@ const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
 // Injected in this order; must match background.js CONTENT_SCRIPTS.
 const CONTENT_SCRIPTS = [
+    '/compose/policy.js',
+    '/compose/session.js',
+    '/compose/textarea.js',
+    '/compose/contenteditable.js',
+    '/compose/ui.js',
+    '/compose/controller.js',
     '/content.js',
     '/captions/parser.js',
     '/captions/fetcher.js',

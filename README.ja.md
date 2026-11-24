@@ -74,7 +74,7 @@ AMO（Firefox Add-ons）に提出する場合は、拡張機能フォルダを�
 - ✅ `localhost` にのみ接続します。外部ネットワークへのリクエストは一切発生しません
 - ✅ アナリティクスやトラッキングなし
 - ✅ データ収集なし
-- ✅ 必要最小限の権限（`localhost` のホスト権限のみ）
+- ✅ 必要最小限の権限：既定では `localhost` へのアクセスのみ。自動翻訳や入力欄翻訳などのページ全体を使う機能を有効にした場合だけ、全サイトへのアクセスを任意で要求します
 - ✅ 翻訳キャッシュは**デフォルトでオフ**です。有効にしても**ローカルに**保存され（メモリ上、または永続モードの場合は IndexedDB）、マシンの外に出ることはありません。ブラウザ終了時にクリアする設定、オフにする設定、いつでも手動でクリアすることも可能です
 
 ## 設定
@@ -91,6 +91,7 @@ AMO（Firefox Add-ons）に提出する場合は、拡張機能フォルダを�
 | Show Glow | 翻訳済みテキストの視覚インジケーターの切り替え |
 | Cache translations | 同一テキストの翻訳結果を再利用 — *オフ*（デフォルト）、*ブラウザ終了まで*、または*セッションをまたいで*。「Clear cache」ボタン付き |
 | Automatically translate pages | 外国語ページを読み込み時に翻訳。言語とサイトの除外リスト付き — デフォルト*オフ* |
+| Compose translation | 入力欄で訳文をプレビューし、その場で差し替え — デフォルト*オフ* |
 
 ## 自動翻訳
 
@@ -102,6 +103,22 @@ AMO（Firefox Add-ons）に提出する場合は、拡張機能フォルダを�
 - **除外設定。** すでに読める言語のリストと、除外したいサイトのリストを管理できます。サイトのエントリはサブドメインをカバーするため、`example.com` を指定すると `news.example.com` も除外されます。
 
 全ウェブサイトへの実行権限が必要です。拡張機能は、ユーザーが何かを要求する前にページへ存在している必要があるためです。なお、この機能を有効にすると、開くすべてのページであなた自身のハードウェア上で翻訳処理が実行されることに留意してください。
+
+## 入力欄翻訳（Compose Translation）
+
+**Options → Compose Translation** を有効にし、原文言語と翻訳先言語を選びます。入力欄にフォーカスすると、右上端に小さな `あA` ボタンが表示されます。
+
+1. 下書きを入力してボタンをクリックします
+2. プレビューで訳文を確認し、**Replace** を選ぶとその場で下書きを差し替えます
+3. そのまま編集を続けるか、undo ボタンで差し替え前の下書きに戻せます
+
+- **手動操作のみ。** 下書きは翻訳ボタンを押したときだけローカル LLM に送信され、入力中に自動送信されることはありません
+- **対象。** textarea とプレーンテキストの `contenteditable` 欄に対応します。リッチテキスト欄は上書きせず、訳文のコピーに退避します
+- **制限。** 3,000 Unicode code point を超える下書きは分割せず拒否します。undo は 1 段階のみで、差し替え後にさらに編集すると使えません
+- **安全性。** パスワード、OTP、決済情報などの機密欄と思われるフィールド、非表示・無効・読み取り専用の欄は除外します
+- **キャッシュ。** 既存の翻訳キャッシュ設定が適用され、永続キャッシュが有効な場合は訳文がローカルの IndexedDB に保存され得ます
+
+完全な仕様は [docs/compose-translation-requirements.md](docs/compose-translation-requirements.md) を参照してください。
 
 ## 翻訳キャッシュ
 
@@ -158,6 +175,13 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 ├── manifest.json      # 拡張機能マニフェスト (MV3)
 ├── background.js      # バックグラウンドスクリプト（LLM API、設定、メッセージルーティング）
 ├── content.js         # コンテンツスクリプト（DOM 操作）
+├── compose/           # 入力欄でのその場翻訳
+│   ├── policy.js      # 対象判定と下書きの上限
+│   ├── session.js     # プレビュー・差し替え・undo・古い結果の破棄
+│   ├── textarea.js    # textarea の読み書きと復元
+│   ├── contenteditable.js # プレーンテキスト contenteditable アダプター
+│   ├── ui.js          # トリガー・プレビュー・操作 UI
+│   └── controller.js  # フォーカス・IME・翻訳・ライフサイクル制御
 ├── captions/          # YouTube 字幕翻訳
 │   ├── parser.js      # 字幕の解析・文単位への連結
 │   ├── fetcher.js     # 字幕の取得（プレイヤー経由 / 直接）
@@ -198,6 +222,13 @@ node tests/pdf-layout-test.mjs     # ラップ + ボックス収めサイズ
 node tests/pdf-write-test.mjs      # PDF ライタ構造
 node tests/pdf-head-test.mjs       # FR-12 content-type + 配線
 node tests/pdf-head-functional-test.mjs # FR-12 HEAD プローブ（ローカルサーバ）
+```
+
+入力欄翻訳には、policy・session・アダプター・UI・controller の統合・スクリプト配線を検証するブラウザ不要テストがあります。
+
+```
+for test in tests/compose-*.mjs; do node "$test" || exit 1; done
+node tests/settings-keys-test.mjs # settings.js のキーと各スクリプトの参照
 ```
 
 ## 開発

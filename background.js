@@ -132,17 +132,22 @@ async function getSettings() {
 // Content script auto-injection
 //
 // Most of the extension works by injecting content.js on demand when the user
-// asks for a translation. Two features instead need it present on every page
-// before the user does anything: the floating selection button, and
-// auto-translate. Registration is therefore keyed off the union of the two --
-// turning one off must not pull the script out from under the other.
+// asks for a translation. Proactive features instead need it present before the
+// user does anything. Registration is therefore keyed off their union — turning
+// one off must not pull the script out from under the others.
 // ============================================================================
 
 const CONTENT_SCRIPT_ID = 'llm-translator-content';
 
-// Load order matters: the caption modules attach to window and the page
-// script wires their bridge at the end. They are cheap no-ops off YouTube.
+// Compose modules must load before content.js, which initializes the
+// controller. Caption modules attach to window and are wired at the end.
 const CONTENT_SCRIPTS = [
+    'compose/policy.js',
+    'compose/session.js',
+    'compose/textarea.js',
+    'compose/contenteditable.js',
+    'compose/ui.js',
+    'compose/controller.js',
     'content.js',
     'captions/parser.js',
     'captions/fetcher.js',
@@ -150,7 +155,11 @@ const CONTENT_SCRIPTS = [
 ];
 
 function needsContentScript(settings) {
-    return !!(settings && (settings.floatingButton || settings.autoTranslatePages));
+    return !!(settings && (
+        settings.floatingButton
+        || settings.autoTranslatePages
+        || settings.composeTranslationEnabled
+    ));
 }
 
 async function syncContentScriptRegistration() {

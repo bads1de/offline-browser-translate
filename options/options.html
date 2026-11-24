@@ -30,6 +30,9 @@
                 <li><a href="#section-autotranslate" class="nav-link" data-section="section-autotranslate">
                         <span class="nav-icon">🚀</span> <span data-i18n="nav.autotranslate">Auto-Translate</span>
                     </a></li>
+                <li><a href="#section-compose" class="nav-link" data-section="section-compose">
+                        <span class="nav-icon">文</span> <span data-i18n="nav.compose">Compose Translation</span>
+                    </a></li>
                 <li><a href="#section-performance" class="nav-link" data-section="section-performance">
                         <span class="nav-icon">⚡</span> <span data-i18n="nav.performance">Performance</span>
                     </a></li>
@@ -315,6 +318,84 @@
                                 </p>
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                <!-- Compose translation -->
+                <section class="settings-section" id="section-compose">
+                    <div class="section-header">
+                        <h2 data-i18n="compose.sectionTitle">Compose Translation</h2>
+                        <p class="section-description" data-i18n="compose.sectionDesc">
+                            Translate drafts inside textareas and supported contenteditable fields without leaving the page.
+                        </p>
+                    </div>
+
+                    <div class="toggle-card">
+                        <div class="toggle-card-header">
+                            <div>
+                                <div class="toggle-card-title" data-i18n="compose.enableTitle">Translate text in input fields</div>
+                                <div class="toggle-card-desc" data-i18n="compose.enableDesc">
+                                    Shows a small translation button near supported input fields. Drafts are sent to your local LLM
+                                    only when you press it. Enabling this asks for permission to run on all websites.
+                                </div>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="composeTranslationEnabled">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="composeOptions" hidden>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="composeSourceLanguageTrigger" data-i18n="compose.sourceLabel">Source language</label>
+                                <div class="lang-picker simple-select" id="composeSourceLanguagePickerEl">
+                                    <button type="button" id="composeSourceLanguageTrigger" class="lang-picker-trigger"
+                                        aria-haspopup="listbox" aria-expanded="false">
+                                        <span id="composeSourceLanguageTriggerLabel" class="lang-picker-label">Auto-detect</span>
+                                        <svg class="lang-picker-caret" viewBox="0 0 24 24" width="16" height="16"
+                                            fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </button>
+                                    <div id="composeSourceLanguageMenu" class="lang-picker-menu" hidden>
+                                        <ul id="composeSourceLanguageList" class="lang-picker-list" role="listbox"
+                                            tabindex="-1"></ul>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="composeTargetLanguageTrigger" data-i18n="compose.targetLabel">Target language</label>
+                                <div class="lang-picker simple-select" id="composeTargetLanguagePickerEl">
+                                    <button type="button" id="composeTargetLanguageTrigger" class="lang-picker-trigger"
+                                        aria-haspopup="listbox" aria-expanded="false">
+                                        <span id="composeTargetLanguageTriggerLabel" class="lang-picker-label">English</span>
+                                        <svg class="lang-picker-caret" viewBox="0 0 24 24" width="16" height="16"
+                                            fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </button>
+                                    <div id="composeTargetLanguageMenu" class="lang-picker-menu" hidden>
+                                        <ul id="composeTargetLanguageList" class="lang-picker-list" role="listbox"
+                                            tabindex="-1"></ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="hint" data-i18n="compose.privacy">
+                            Typing alone never sends anything. Password, OTP, hidden, disabled, and read-only fields are excluded.
+                        </p>
+                        <p class="hint" data-i18n="compose.cacheNote">
+                            If translation caching is enabled, translated drafts may also be stored in that local cache.
+                        </p>
+                        <p class="hint" data-i18n="compose.scopeNote">
+                            Supports textareas and plain-text contenteditable fields. Rich-text editors offer copy-only fallback.
+                        </p>
                     </div>
                 </section>
 

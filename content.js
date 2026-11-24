@@ -38,6 +38,31 @@ function perfMark(label, ms, extra) {
 }
 
 let floatingButtonEnabled = false;
+let composeController = null;
+
+function configureComposeTranslation(settings) {
+    if (!settings || !window.LctComposeController) return;
+    const composeSettings = {
+        composeTranslationEnabled: !!settings.composeTranslationEnabled,
+        composeSourceLanguage: settings.composeSourceLanguage || 'auto',
+        composeTargetLanguage: settings.composeTargetLanguage || 'en'
+    };
+    if (!composeController) {
+        composeController = window.LctComposeController.init({
+            document,
+            settings: composeSettings,
+            allowContentEditable: true
+        });
+        return;
+    }
+    composeController.configure(composeSettings);
+}
+
+window.addEventListener('pagehide', () => {
+    if (!composeController) return;
+    composeController.destroy();
+    composeController = null;
+});
 
 browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' }).then(r => {
     if (r?.settings) {
@@ -45,6 +70,7 @@ browserAPI.runtime.sendMessage({ type: 'GET_SETTINGS' }).then(r => {
         if (r.settings.targetLanguage) currentTargetLanguage = r.settings.targetLanguage;
         applyCaptionMode(r.settings.youtubeCaptionMode);
         floatingButtonEnabled = !!r.settings.floatingButton;
+        configureComposeTranslation(r.settings);
         maybeAutoTranslatePage(r.settings);
     }
 }).catch(() => {});
@@ -68,6 +94,7 @@ browserAPI.storage.onChanged.addListener((changes, area) => {
     if (newSettings?.youtubeCaptionMode) {
         applyCaptionMode(newSettings.youtubeCaptionMode);
     }
+    configureComposeTranslation(newSettings);
 });
 
 // Track text nodes and their segments
