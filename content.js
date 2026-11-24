@@ -58,6 +58,23 @@ function configureComposeTranslation(settings) {
     composeController.configure(composeSettings);
 }
 
+// A keyboard shortcut can be the first thing that touches a page: the
+// background injects this script on demand and the controller only exists once
+// GET_SETTINGS has answered, so give it a moment instead of reporting the
+// feature as off.
+function waitForComposeController(timeoutMs = 1500) {
+    if (composeController) return Promise.resolve(composeController);
+    return new Promise(resolve => {
+        const startedAt = Date.now();
+        const tick = () => {
+            if (composeController) { resolve(composeController); return; }
+            if (Date.now() - startedAt >= timeoutMs) { resolve(null); return; }
+            setTimeout(tick, 100);
+        };
+        tick();
+    });
+}
+
 window.addEventListener('pagehide', () => {
     if (!composeController) return;
     composeController.destroy();
@@ -1550,6 +1567,45 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ showing: 'original', hasCache: false });
             }
             break;
+
+        case 'TRANSLATE_COMPOSE': {
+            // Keyboard shortcut (Alt+T): translate whatever field has the caret.
+            // The policy, limits, IME guard, and preview all stay with the
+            // compose controller; this only adds a toast for the cases where a
+            // click on the trigger would have shown the reason on screen.
+            waitForComposeController().then(controller => {
+                if (!controller) {
+                    showToast('Compose translation is not ready — try again');
+                    sendResponse({ ok: false, reason: 'not-ready' });
+                    return null;
+                }
+                if (!controller.status().enabled) {
+                    showToast('Compose translation is off — enable it in Settings');
+                    sendResponse({ ok: false, reason: 'disabled' });
+                    return null;
+                }
+                return controller.translate().then(result => {
+                    if (result && result.ok === false) {
+                        const messages = {
+                            inactive: 'Click into a text field first',
+                            empty: 'Nothing to translate',
+                            'same-language': 'Draft is already in the target language',
+                            'too-long': 'Draft is too long to translate',
+                            composing: 'Finish typing, then try again',
+                            loading: 'Already translating',
+                            unsupported: 'This editor is not supported'
+                        };
+                        const text = messages[result.reason];
+                        if (text) showToast(text);
+                    }
+                    sendResponse(result || { ok: false });
+                });
+            }).catch(error => {
+                showToast('Compose translation failed');
+                sendResponse({ ok: false, error: String(error) });
+            });
+            return true;
+        }
 
         case 'TRANSLATION_PROGRESS':
             showToast(message.status);

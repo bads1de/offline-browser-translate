@@ -67,6 +67,20 @@ The extension will:
 - Translate in batches with progress percentage
 - Auto-translate new content (infinite scroll)
 
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Translate the page, or put the original back | `Alt+A` |
+| Switch between translated and original text | `Alt+B` |
+| Translate the selection | `Alt+S` |
+| Translate the text in the focused field (Compose Translation) | `Alt+T` |
+
+- **Alt+B needs something to switch to.** Until the page has been translated there is no cached translation to restore, so the shortcut starts a translation run instead of doing nothing.
+- **Alt+T needs Compose Translation enabled** (Options → Compose Translation) and the caret already in a field. Empty, over-long, sensitive, and unsupported drafts report the reason in a toast.
+- **Changing them.** Chrome/Edge: `chrome://extensions/shortcuts`. Firefox: `about:addons` → the extension → **Manage Extension Shortcuts**. Firefox may leave a default unassigned when it clashes with a browser shortcut; assign it there.
+- The same actions are still in the popup and the right-click menu.
+
 ## Privacy
 
 This extension is designed to be privacy-focused:
@@ -203,6 +217,13 @@ Settings defaults have one guard:
 
 ```
 node tests/settings-keys-test.mjs  # settings.js keys vs. keys the scripts read
+```
+
+Keyboard shortcuts have one guard:
+
+```
+node tests/commands-wiring-test.mjs    # manifest commands vs. background/content wiring
+node tests/commands-background-test.mjs # command listener behaviour against a fake browser API
 ```
 
 Compose translation has browser-free suites for policy, sessions, adapters, UI, controller integration, and script wiring:

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local LLM Translator",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Privacy-focused translation using local LLMs (Ollama, LMStudio, or any OpenAI-compatible server such as llama.cpp). Your data never leaves your machine.",
   "permissions": [
     "activeTab",
@@ -39,6 +39,24 @@
       "background.js"
     ],
     "service_worker": "background.js"
+  },
+  "commands": {
+    "translate-page": {
+      "suggested_key": { "default": "Alt+A" },
+      "description": "Translate the page, or put the original back"
+    },
+    "toggle-translation": {
+      "suggested_key": { "default": "Alt+B" },
+      "description": "Switch between translated and original text"
+    },
+    "translate-selection": {
+      "suggested_key": { "default": "Alt+S" },
+      "description": "Translate the selected text"
+    },
+    "translate-compose": {
+      "suggested_key": { "default": "Alt+T" },
+      "description": "Translate the text in the focused field"
+    }
   },
   "options_ui": {
     "page": "options/options.html",

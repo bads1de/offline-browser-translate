@@ -2025,65 +2025,99 @@ browserAPI.runtime.onInstalled.addListener(async () => {
     await syncContentScriptRegistration();
 });
 
+// ============================================================================
+// Translation entry points
+//
+// The context menu and the keyboard shortcuts both land here, so a shortcut
+// behaves exactly like the menu item it mirrors.
+// ============================================================================
+
+// Resolve 'auto' into the language the page declares, so the model gets a real
+// source language instead of guessing.
+async function detectTabLanguage(tabId) {
+    try {
+        const result = await browserAPI.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+                const htmlLang = document.documentElement.lang || document.querySelector('html')?.getAttribute('lang');
+                if (htmlLang) return htmlLang.split('-')[0].toLowerCase();
+                const metaLang = document.querySelector('meta[http-equiv="content-language"]')?.getAttribute('content');
+                if (metaLang) return metaLang.split('-')[0].toLowerCase();
+                return null;
+            }
+        });
+        return result && result[0] ? result[0].result : null;
+    } catch (e) {
+        debugLog('[Background] Could not detect page language:', e);
+        return null;
+    }
+}
+
+async function resolveSourceLanguage(tabId, settings) {
+    const configured = settings.sourceLanguage;
+    if (configured && configured !== 'auto') return configured;
+    const detected = await detectTabLanguage(tabId);
+    if (detected) debugLog(`[Background] Detected page language: ${detected}`);
+    return detected || 'auto';
+}
+
+// The content script is only registered up front when a page-wide feature is
+// on, so every entry point has to be able to inject it on demand.
+async function sendToContent(tabId, message) {
+    try {
+        return await browserAPI.tabs.sendMessage(tabId, message);
+    } catch (e) {
+        debugLog('[Background] Content script not ready, injecting:', e);
+        await browserAPI.scripting.executeScript({ target: { tabId }, files: CONTENT_SCRIPTS });
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return browserAPI.tabs.sendMessage(tabId, message);
+    }
+}
+
+async function translatePageInTab(tabId) {
+    const settings = await getSettings();
+    return sendToContent(tabId, {
+        type: 'START_TRANSLATION',
+        targetLanguage: settings.targetLanguage,
+        sourceLanguage: await resolveSourceLanguage(tabId, settings),
+        showGlow: settings.showGlow,
+        maxConcurrentRequests: settings.maxConcurrentRequests || 4
+    });
+}
+
+async function translateSelectionInTab(tabId) {
+    const settings = await getSettings();
+    return sendToContent(tabId, {
+        type: 'TRANSLATE_SELECTION',
+        targetLanguage: settings.targetLanguage,
+        sourceLanguage: await resolveSourceLanguage(tabId, settings),
+        showGlow: settings.showGlow,
+        maxConcurrentRequests: settings.maxConcurrentRequests || 4
+    });
+}
+
+// Alt+B: translated <-> original. With nothing translated and no cache there is
+// nothing to switch back to, so start a run instead of doing nothing.
+async function toggleTranslationInTab(tabId) {
+    const response = await sendToContent(tabId, { type: 'TOGGLE_TRANSLATION' });
+    if (response && response.showing === 'original' && !response.hasCache) {
+        return translatePageInTab(tabId);
+    }
+    return response;
+}
+
+// Alt+T: translate the field the caret is in. The compose feature owns the
+// policy (eligibility, limits, IME) and falls back to a toast when it is off.
+async function translateComposeInTab(tabId) {
+    return sendToContent(tabId, { type: 'TRANSLATE_COMPOSE' });
+}
+
 browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
     if (info.menuItemId === "translate-page") {
         if (!tab || !tab.id) return;
 
         try {
-            const settings = await getSettings();
-
-            // Resolve source language - if 'auto', try to detect it programmatically
-            let sourceLang = settings.sourceLanguage;
-            if (!sourceLang || sourceLang === 'auto') {
-                try {
-                    const result = await browserAPI.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        func: () => {
-                            const htmlLang = document.documentElement.lang || document.querySelector('html')?.getAttribute('lang');
-                            if (htmlLang) return htmlLang.split('-')[0].toLowerCase();
-                            const metaLang = document.querySelector('meta[http-equiv="content-language"]')?.getAttribute('content');
-                            if (metaLang) return metaLang.split('-')[0].toLowerCase();
-                            return null;
-                        }
-                    });
-                    if (result && result[0] && result[0].result) {
-                        sourceLang = result[0].result;
-                        console.log(`[Background] Detected page language for context menu: ${sourceLang}`);
-                    }
-                } catch (detectErr) {
-                    console.log('[Background] Could not detect language from background:', detectErr);
-                }
-            }
-
-            // Helper to send message
-            const sendTranslationMessage = async () => {
-                await browserAPI.tabs.sendMessage(tab.id, {
-                    type: 'START_TRANSLATION',
-                    targetLanguage: settings.targetLanguage,
-                    sourceLanguage: sourceLang || 'auto', // Use detected or fall back to auto
-                    showGlow: settings.showGlow,
-                    maxConcurrentRequests: settings.maxConcurrentRequests || 4
-                });
-            };
-
-            try {
-                await sendTranslationMessage();
-            } catch (e) {
-                console.log('[Background] Initial translation connection failed, attempting injection:', e);
-
-                // If message failed, content script might not be loaded. Inject it.
-                await browserAPI.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    files: CONTENT_SCRIPTS
-                });
-
-                // Wait briefly for script to initialize
-                await new Promise(resolve => setTimeout(resolve, 200));
-
-                // Retry message
-                await sendTranslationMessage();
-            }
-
+            await translatePageInTab(tab.id);
         } catch (e) {
             console.error('[Background] Context menu translation failed:', e);
         }
@@ -2117,48 +2151,57 @@ browserAPI.contextMenus.onClicked.addListener(async (info, tab) => {
         if (!tab || !tab.id) return;
 
         try {
-            const settings = await getSettings();
-
-            let sourceLang = settings.sourceLanguage;
-            if (!sourceLang || sourceLang === 'auto') {
-                try {
-                    const result = await browserAPI.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        func: () => {
-                            const htmlLang = document.documentElement.lang || document.querySelector('html')?.getAttribute('lang');
-                            if (htmlLang) return htmlLang.split('-')[0].toLowerCase();
-                            const metaLang = document.querySelector('meta[http-equiv="content-language"]')?.getAttribute('content');
-                            if (metaLang) return metaLang.split('-')[0].toLowerCase();
-                            return null;
-                        }
-                    });
-                    if (result?.[0]?.result) sourceLang = result[0].result;
-                } catch (detectErr) { /* ignore */ }
-            }
-
-            const sendSelectionMessage = async () => {
-                await browserAPI.tabs.sendMessage(tab.id, {
-                    type: 'TRANSLATE_SELECTION',
-                    targetLanguage: settings.targetLanguage,
-                    sourceLanguage: sourceLang || 'auto',
-                    showGlow: settings.showGlow,
-                    maxConcurrentRequests: settings.maxConcurrentRequests || 4
-                });
-            };
-
-            try {
-                await sendSelectionMessage();
-            } catch (e) {
-                await browserAPI.scripting.executeScript({ target: { tabId: tab.id }, files: CONTENT_SCRIPTS });
-                await new Promise(resolve => setTimeout(resolve, 200));
-                await sendSelectionMessage();
-            }
-
+            await translateSelectionInTab(tab.id);
         } catch (e) {
             console.error('[Background] Context menu selection translation failed:', e);
         }
     }
 });
+
+// ============================================================================
+// Keyboard shortcuts (commands API)
+// ============================================================================
+
+// Commands fire for the active tab; `tab` is present on Chrome and Firefox, but
+// query it as a fallback so a stray invocation cannot do nothing silently.
+async function activeTabForCommand(tab) {
+    if (tab && tab.id) return tab;
+    const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
+    return tabs && tabs[0];
+}
+
+function isRestrictedUrl(url) {
+    return !!url && /^(about:|chrome:|chrome-extension:|moz-extension:|edge:|view-source:)/.test(url);
+}
+
+if (browserAPI.commands && browserAPI.commands.onCommand) {
+    browserAPI.commands.onCommand.addListener(async (command, tab) => {
+        const target = await activeTabForCommand(tab);
+        if (!target || !target.id) return;
+        if (isRestrictedUrl(target.url)) return;
+
+        try {
+            switch (command) {
+                case 'translate-page':
+                    await translatePageInTab(target.id);
+                    break;
+                case 'toggle-translation':
+                    await toggleTranslationInTab(target.id);
+                    break;
+                case 'translate-selection':
+                    await translateSelectionInTab(target.id);
+                    break;
+                case 'translate-compose':
+                    await translateComposeInTab(target.id);
+                    break;
+                default:
+                    debugLog('[Background] Unknown shortcut:', command);
+            }
+        } catch (e) {
+            console.error(`[Background] Shortcut ${command} failed:`, e);
+        }
+    });
+}
 
 // Initialize settings on startup
 loadSettings().then(() => {
