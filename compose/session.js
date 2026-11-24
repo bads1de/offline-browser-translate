@@ -1,6 +1,21 @@
 (function (root) {
     'use strict';
 
+    // Editors append their own trailing block or <br>, so the text read back
+    // after a replacement (or after the editor re-renders it) can carry
+    // trailing whitespace the user never typed. Splitting on that difference
+    // would disable undo and make a programmatic re-render look like the user
+    // editing the draft.
+    function comparable(text) {
+        return String(text === null || text === undefined ? '' : text)
+            .replace(/\r\n?/g, '\n')
+            .replace(/\s+$/u, '');
+    }
+
+    function sameText(a, b) {
+        return comparable(a) === comparable(b);
+    }
+
     function createSession() {
         let state = 'idle';
         let generation = 0;
@@ -48,7 +63,7 @@
 
         function noteEdit(text) {
             generation++;
-            if (state === 'replaced' && text === replacedText) return;
+            if (state === 'replaced' && sameText(text, replacedText)) return;
             if (state === 'replaced') state = 'editing';
             else state = 'idle';
             request = null;
@@ -69,7 +84,7 @@
 
         function replace(currentText, snapshot, nextText) {
             if (state !== 'preview') return { ok: false, stale: false };
-            if (!request || request.text !== currentText) {
+            if (!request || !sameText(request.text, currentText)) {
                 noteEdit(currentText);
                 return { ok: false, stale: true };
             }
@@ -84,7 +99,7 @@
         }
 
         function canUndo(currentText) {
-            return state === 'replaced' && !!undo && currentText === replacedText;
+            return state === 'replaced' && !!undo && sameText(currentText, replacedText);
         }
 
         function undoReplacement(currentText) {
@@ -120,5 +135,5 @@
         };
     }
 
-    root.LctComposeSession = { createSession };
+    root.LctComposeSession = { createSession, sameText };
 })(typeof window !== 'undefined' ? window : globalThis);

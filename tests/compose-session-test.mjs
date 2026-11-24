@@ -124,6 +124,14 @@ const createSession = context.LctComposeSession.createSession;
     }, 'translation');
 
     check('undo is available before further edits', session.canUndo('translation') === true);
+    // Editors append a trailing block/br after a programmatic write; that must
+    // not be mistaken for a user edit, or undo is lost on Reddit and X.
+    check('editor trailing whitespace keeps undo available',
+        session.canUndo('translation\n') === true && session.canUndo('translation\n\n') === true);
+    check('trailing whitespace is not treated as an edit',
+        session.noteEdit('translation\n') === undefined
+        && session.status().state === 'replaced' && session.canUndo('translation') === true,
+        session.status());
     session.noteEdit('translation edited');
     check('further edits disable undo', session.canUndo('translation edited') === false
         && session.status().state === 'editing', session.status());

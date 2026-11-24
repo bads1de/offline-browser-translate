@@ -106,9 +106,9 @@ This needs permission to run on all websites, since the extension has to be pres
 
 ## Compose Translation
 
-Turn on **Options → Compose Translation**, choose source and target languages, then focus an input field. A small `あA` button appears at the field's upper-right edge.
+Turn on **Options → Compose Translation**, choose source and target languages, then focus an input field. A small translate icon appears at the field's upper-right edge.
 
-1. Write your draft and click the button.
+1. Write your draft and click the translate icon.
 2. Review the translation in the preview, then choose **Replace** to update the draft in place.
 3. Keep editing, or click the undo button to restore the previous draft.
 

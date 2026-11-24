@@ -362,18 +362,18 @@ async function run() {
     check('pending translation shows loading UI', !!h.lastCall('loading'));
 
     h.pending[0].resolve({ translations: [{ id: 1, text: 'Japanese draft' }] });
-    await new Promise(resolve => setImmediate(resolve)).then(() => {
+    await new Promise(resolve => setImmediate(resolve)).then(async () => {
         check('completed translation opens preview', h.lastCall('preview')?.[2].translation === 'Japanese draft');
         check('completed translation releases the busy trigger', h.lastCall('trigger')?.[2].busy === false);
         check('preview does not modify the draft', field.value === '日本語の下書き');
 
-        const replaced = h.controller.replace();
+        const replaced = await h.controller.replace();
         check('replace succeeds', replaced.ok === true, replaced);
         check('replace updates textarea and React-like state', field.value === 'Japanese draft'
             && field.reactValue === 'Japanese draft', [field.value, field.reactValue]);
         check('replace shows undo UI', h.lastCall('replaced')?.[2].canUndo === true);
 
-        const undone = h.controller.undo();
+        const undone = await h.controller.undo();
         check('undo succeeds', undone.ok === true, undone);
         check('undo restores the Japanese draft', field.value === '日本語の下書き'
             && field.reactValue === '日本語の下書き', [field.value, field.reactValue]);
@@ -413,11 +413,11 @@ async function run() {
     field.focus();
     h.controller.translate();
     h.pending[0].resolve({ translations: [{ id: 1, text: 'translation' }] });
-    await new Promise(resolve => setImmediate(resolve)).then(() => {
-        h.controller.replace();
+    await new Promise(resolve => setImmediate(resolve)).then(async () => {
+        await h.controller.replace();
         field.value = 'translation edited';
         h.document.dispatch('input', field);
-        const undone = h.controller.undo();
+        const undone = await h.controller.undo();
         check('undo is rejected after further edits', undone.ok === false, undone);
         check('edited draft is not overwritten', field.value === 'translation edited');
     });
@@ -449,6 +449,33 @@ async function run() {
     check('sensitive field never shows a trigger', !h.uiCalls.some(call => call[0] === 'trigger'));
     check('sensitive field cannot be translated', (await h.controller.translate()).ok === false);
     check('sensitive field sends nothing', h.pending.length === 0);
+}
+
+{
+    const h = createHarness();
+    const field = h.field('');
+    field.focus();
+    check('empty field shows no trigger', !h.uiCalls.some(call => call[0] === 'trigger'));
+    check('empty field stays tracked', h.controller.status().active === true);
+    field.value = '日本語の下書き';
+    h.document.dispatch('input', field);
+    check('typing into an empty field offers the trigger',
+        h.lastCall('trigger')?.[2].disabled === false);
+    check('typing into an empty field sends nothing', h.pending.length === 0);
+}
+
+{
+    const h = createHarness();
+    const field = h.field();
+    field.focus();
+    h.controller.translate();
+    h.pending[0].resolve({ translations: [{ id: 1, text: 'Japanese draft' }] });
+    await new Promise(resolve => setImmediate(resolve)).then(() => {
+        const names = h.uiCalls.map(call => call[0]);
+        const previewAt = names.lastIndexOf('preview');
+        const triggerAfterPreview = names.slice(previewAt + 1).includes('trigger');
+        check('trigger is refreshed after the preview opens', previewAt >= 0 && triggerAfterPreview, names);
+    });
 }
 
 {
@@ -500,12 +527,12 @@ async function run() {
     h.controller.translate();
     check('contenteditable translation sends the visible draft', h.pending[0]?.message.texts[0].text === '日本語\n返信');
     h.pending[0].resolve({ translations: [{ id: 1, text: 'Japanese\nreply' }] });
-    await new Promise(resolve => setImmediate(resolve)).then(() => {
+    await new Promise(resolve => setImmediate(resolve)).then(async () => {
         check('contenteditable preview keeps the original draft', field.innerText === '日本語\n返信'
             && h.lastCall('preview')?.[2].translation === 'Japanese\nreply');
-        check('contenteditable replace succeeds', h.controller.replace().ok === true);
+        check('contenteditable replace succeeds', (await h.controller.replace()).ok === true);
         check('contenteditable replace updates the draft', field.innerText === 'Japanese\nreply');
-        check('contenteditable undo succeeds', h.controller.undo().ok === true);
+        check('contenteditable undo succeeds', (await h.controller.undo()).ok === true);
         check('contenteditable undo restores line breaks', field.innerText === '日本語\n返信');
     });
 }
@@ -526,7 +553,7 @@ async function run() {
     h.controller.translate();
     h.pending[0].resolve({ translations: [{ id: 1, text: 'English reply' }] });
     await new Promise(resolve => setImmediate(resolve)).then(async () => {
-        check('rich contenteditable is not replaced', h.controller.replace().reason === 'rich-text');
+        check('rich contenteditable is not replaced', (await h.controller.replace()).reason === 'rich-text');
         check('rich contenteditable keeps the original draft', field.innerText === '日本語の返信');
         check('rich contenteditable offers a copy fallback', h.lastCall('error')?.[2].copyable === true
             && h.lastCall('error')?.[2].translation === 'English reply');
@@ -550,8 +577,8 @@ async function run() {
     field.focus();
     h.controller.translate();
     h.pending[0].resolve({ translations: [{ id: 1, text: 'English reply' }] });
-    await new Promise(resolve => setImmediate(resolve)).then(() => {
-        check('rejected contenteditable update reports failure', h.controller.replace().reason === 'apply-failed');
+    await new Promise(resolve => setImmediate(resolve)).then(async () => {
+        check('rejected contenteditable update reports failure', (await h.controller.replace()).reason === 'apply-failed');
         check('rejected contenteditable update preserves the draft', field.innerText === '日本語の返信');
         check('rejected contenteditable update keeps copy available', h.lastCall('error')?.[2].copyable === true);
     });
@@ -564,7 +591,7 @@ async function run() {
     h.controller.translate();
     h.pending[0].resolve({ translations: [{ id: 1, text: 'English reply' }] });
     await new Promise(resolve => setImmediate(resolve)).then(async () => {
-        const replaced = h.controller.replace();
+        const replaced = await h.controller.replace();
         check('site-rejected contenteditable reports apply failure', replaced.reason === 'apply-failed', replaced);
         check('site rejection restoration emits both input events',
             field.events.filter(event => event.type === 'input').length === 2);

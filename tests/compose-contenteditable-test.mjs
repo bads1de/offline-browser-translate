@@ -114,9 +114,10 @@ function createHarness(options = {}) {
         createDocumentFragment() { return new FakeNode(11); },
         execCommand: options.execCommand === false ? undefined : (command, ui, value) => {
             calls.exec.push([command, ui, value]);
+            if (options.execCommandResult === false) return false;
             field.replaceChildren(document.createTextNode(value));
             selection.collapse(field.childNodes[0], value.length);
-            return options.execCommandResult !== false;
+            return true;
         }
     };
 
@@ -184,7 +185,8 @@ function createHarness(options = {}) {
         Event: FakeEvent,
         InputEvent: FakeInputEvent,
         NodeFilter: { SHOW_TEXT: 4, SHOW_ELEMENT: 1 },
-        getSelection: () => selection
+        getSelection: () => selection,
+        requestAnimationFrame: callback => setTimeout(callback, 0)
     };
     document.defaultView = view;
 
@@ -269,6 +271,7 @@ function createHarness(options = {}) {
     check('shadow-root content is rejected', h.adapter.canReplace(h.field) === false);
 }
 
+async function run() {
 {
     const h = createHarness({ text: '日本語の下書き' });
     h.selection.collapse(h.field.childNodes[0], 3);
@@ -276,15 +279,14 @@ function createHarness(options = {}) {
     check('capture stores text and selection', snapshot.text === '日本語の下書き'
         && snapshot.selection.start === 3 && snapshot.selection.end === 3, snapshot.selection);
 
-    const replaced = h.adapter.replace(h.field, 'English draft');
+    const replaced = await h.adapter.replace(h.field, 'English draft');
     check('direct text replacement updates the draft', replaced === true
         && h.adapter.read(h.field) === 'English draft');
-    check('replacement avoids deprecated editing commands', h.calls.exec.length === 0);
     check('replacement keeps the field editable', h.field.isContentEditable === true);
     check('replacement preserves scroll position', h.field.scrollTop === 12 && h.field.scrollLeft === 7);
     check('replacement moves the caret to the end', h.selection.anchorOffset === 'English draft'.length);
 
-    const restored = h.adapter.restore(h.field, snapshot);
+    const restored = await h.adapter.restore(h.field, snapshot);
     check('restore recovers the original draft', restored === true
         && h.adapter.read(h.field) === '日本語の下書き');
     check('restore recovers the original selection', h.selection.anchorOffset === 3
@@ -294,26 +296,73 @@ function createHarness(options = {}) {
 
 {
     const h = createHarness({ execCommand: false, text: 'original' });
-    const replaced = h.adapter.replace(h.field, '<script>alert(1)</script>\nsecond');
+    const replaced = await h.adapter.replace(h.field, '<script>alert(1)</script>\nsecond');
     check('direct replacement handles multiline text', replaced === true);
     check('direct replacement keeps model output as text', h.field.childNodes[0]?.nodeType === 3
         && h.adapter.read(h.field) === '<script>alert(1)</script>\nsecond');
     check('direct replacement preserves newlines with br nodes', h.field.childNodes.some(node => node.tagName === 'BR'));
-    check('direct replacement emits bubbling beforeinput and input', h.field.events.map(event => event.type).join(',') === 'beforeinput,input'
-        && h.field.events.every(event => event.bubbles));
+    const tail = h.field.events.slice(-2).map(event => event.type).join(',');
+    check('direct replacement ends with beforeinput then input', tail === 'beforeinput,input'
+        && h.field.events.every(event => event.bubbles), h.field.events.map(event => event.type));
+}
+
+// A framework editor owns the caret and cancels beforeinput. The adapter must
+// hand the edit to it (delete the selection, then insert) and read the result
+// only after the editor has flushed its model.
+{
+    const h = createHarness({ execCommand: false, text: 'original' });
+    h.field.addEventListener('beforeinput', event => {
+        event.preventDefault();
+        if (event.inputType === 'deleteContentBackward') h.setText('');
+        if (event.inputType === 'insertText') h.setText(event.data);
+    });
+    const replaced = await h.adapter.replace(h.field, 'translation');
+    check('framework editor receives delete then insert', replaced === true
+        && h.adapter.read(h.field) === 'translation', h.adapter.read(h.field));
+    check('framework path does not fall back to DOM writes',
+        h.field.events.filter(event => event.type === 'input').length === 0,
+        h.field.events.map(event => event.type + ':' + event.inputType));
+    check('framework path avoids deprecated editing commands', h.calls.exec.length === 0);
 }
 
 {
     const h = createHarness({ execCommand: false, text: 'original' });
     h.field.addEventListener('beforeinput', event => event.preventDefault());
-    check('cancelled beforeinput prevents replacement', h.adapter.replace(h.field, 'translation') === false);
+    check('cancelled beforeinput prevents replacement', await h.adapter.replace(h.field, 'translation') === false);
     check('cancelled replacement preserves the draft', h.adapter.read(h.field) === 'original');
+}
+
+// Draft.js-style editor: it cancels every beforeinput but only acts on paste,
+// which is where a real user insert lands. The adapter must fall through to it.
+{
+    const h = createHarness({ execCommand: false, text: 'original' });
+    h.view.ClipboardEvent = class extends h.FakeEvent {
+        constructor(type, init = {}) {
+            super(type, init);
+            this.clipboardData = init.clipboardData;
+        }
+    };
+    h.view.DataTransfer = class {
+        constructor() { this.data = {}; }
+        setData(kind, value) { this.data[kind] = value; }
+        getData(kind) { return this.data[kind] || ''; }
+    };
+    h.field.addEventListener('beforeinput', event => event.preventDefault());
+    h.field.addEventListener('paste', event => {
+        h.setText(event.clipboardData.getData('text/plain'));
+        event.preventDefault();
+    });
+    const replaced = await h.adapter.replace(h.field, 'translation');
+    check('editor that only accepts paste still gets the text', replaced === true
+        && h.adapter.read(h.field) === 'translation', h.adapter.read(h.field));
+    check('paste path writes no raw DOM', h.field.events.filter(event => event.type === 'input').length === 0,
+        h.field.events.map(event => event.type));
 }
 
 {
     const h = createHarness({ execCommand: false, text: 'original' });
     h.field.addEventListener('input', () => h.setText('original'));
-    check('site rejection reports replacement failure', h.adapter.replace(h.field, 'translation') === false);
+    check('site rejection reports replacement failure', await h.adapter.replace(h.field, 'translation') === false);
     check('site rejection preserves the original draft', h.adapter.read(h.field) === 'original');
 }
 
@@ -322,9 +371,24 @@ function createHarness(options = {}) {
     const strong = h.document.createElement('strong');
     strong.appendChild(h.document.createTextNode('formatted'));
     h.field.replaceChildren(strong);
-    check('rich text is not destructively replaced', h.adapter.replace(h.field, 'translation') === false);
+    check('rich text is not destructively replaced', await h.adapter.replace(h.field, 'translation') === false);
     check('rich text remains unchanged', h.field.childNodes[0] === strong);
 }
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+{
+    // Editors add their own trailing block/br; the comparison must ignore it.
+    const h = createHarness({ execCommand: false, text: 'original' });
+    h.field.addEventListener('input', () => h.setText('translation\n'));
+    check('trailing editor whitespace still counts as replaced',
+        await h.adapter.replace(h.field, 'translation') === true);
+}
+
+}
+
+run().then(() => {
+    console.log(`\n${pass} passed, ${fail} failed`);
+    process.exit(fail ? 1 : 0);
+}).catch(error => {
+    console.error(error);
+    process.exit(1);
+});

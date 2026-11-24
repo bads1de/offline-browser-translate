@@ -14,6 +14,21 @@
         destroy() {}
     };
 
+    // Reasons a field is worth keeping active even though it cannot be
+    // translated right now. An empty composer becomes eligible on the next
+    // keystroke, so it must stay tracked for onInput() to re-evaluate it.
+    const TRACKABLE = new Set(['empty', 'too-long', 'same-language']);
+
+    // Editor-aware text comparison, shared with the session so both agree on
+    // when a draft really changed. Falls back to a trimmed comparison.
+    function sameText(a, b) {
+        const shared = root.LctComposeSession && root.LctComposeSession.sameText;
+        if (typeof shared === 'function') return shared(a, b);
+        const normalize = text => String(text === null || text === undefined ? '' : text)
+            .replace(/\r\n?/g, '\n').replace(/\s+$/u, '');
+        return normalize(a) === normalize(b);
+    }
+
     function create(options) {
         const document = options.document;
         const policy = options.policy || root.LctComposePolicy;
@@ -37,6 +52,7 @@
         let started = false;
         let activeField = null;
         let suppressInput = null;
+        let applying = false;
         let copyText = '';
         const sessions = new Map();
         const snapshots = new Map();
@@ -116,26 +132,28 @@
             if (!field || field.isConnected === false) return;
             const result = inspect(field);
             if (!result.ok) {
-                updateTrigger(field);
                 if (activeField && activeField !== field) {
                     sessionFor(activeField).invalidate();
                     snapshots.delete(activeField);
-                    copyText = '';
                 }
-                if (activeField === field) {
-                    sessionFor(field).invalidate();
-                    snapshots.delete(field);
-                    copyText = '';
-                }
-                activeField = result.reason === 'too-long' || result.reason === 'same-language'
-                    ? field : null;
-                if (!activeField) ui.hideAll();
+                if (sessions.has(field)) sessionFor(field).invalidate();
+                snapshots.delete(field);
+                copyText = '';
+                ui.hidePanel();
+                // An empty draft is still a supported field: keep it active so the
+                // first input event can offer the trigger. Dropping it here would
+                // leave activeField null and onInput() would ignore the field for
+                // the rest of the session (X's composer starts empty).
+                activeField = TRACKABLE.has(result.reason) ? field : null;
+                if (activeField) updateTrigger(field);
+                else ui.hideAll();
                 return;
             }
             if (activeField && activeField !== field) {
                 sessionFor(activeField).invalidate();
                 snapshots.delete(activeField);
                 copyText = '';
+                ui.hidePanel();
             }
             activeField = field;
             sessionFor(field);
@@ -185,7 +203,16 @@
             if (composing.has(event.target)) return;
             const adapter = adapterFor(event.target);
             if (!adapter) return;
-            sessionFor(event.target).noteEdit(adapter.read(event.target));
+            const session = sessionFor(event.target);
+            const text = adapter.read(event.target);
+            // Framework editors fire input while re-rendering the text we just
+            // wrote (e.g. adding a trailing empty block). That is not a user
+            // edit, so the replaced state and its undo snapshot must survive it.
+            if (session.status().state === 'replaced' && sameText(text, session.status().replacedText)) {
+                updateTrigger();
+                return;
+            }
+            session.noteEdit(text);
             snapshots.delete(event.target);
             copyText = '';
             ui.hidePanel();
@@ -310,8 +337,9 @@
             }
         }
 
-        function replace() {
+        async function replace() {
             if (!activeField) return { ok: false, reason: 'inactive' };
+            if (applying) return { ok: false, reason: 'busy' };
             const field = activeField;
             const session = sessionFor(field);
             const status = session.status();
@@ -334,14 +362,25 @@
                 return replaced;
             }
 
+            // Applying takes more than one frame on framework editors (they
+            // rebuild the DOM themselves), so the field can change under us.
+            // Anything the user types meanwhile cancels the pending apply.
+            const generation = session.status().generation;
             suppressInput = field;
+            applying = true;
             let applied;
             try {
-                applied = adapter.replace(field, status.translation);
+                applied = await adapter.replace(field, status.translation);
             } finally {
+                applying = false;
                 suppressInput = null;
             }
             snapshots.delete(field);
+            if (session.status().generation !== generation) {
+                ui.hidePanel();
+                updateTrigger();
+                return { ok: false, stale: true };
+            }
             if (!applied) {
                 session.invalidate({ clearUndo: true });
                 ui.showError(field, {
@@ -356,8 +395,9 @@
             return { ok: true };
         }
 
-        function undo() {
+        async function undo() {
             if (!activeField) return { ok: false, reason: 'inactive' };
+            if (applying) return { ok: false, reason: 'busy' };
             const field = activeField;
             const session = sessionFor(field);
             const adapter = adapterFor(field);
@@ -368,12 +408,20 @@
                 return undone;
             }
 
+            const generation = session.status().generation;
             suppressInput = field;
+            applying = true;
             let restored;
             try {
-                restored = adapter.restore(field, undone.snapshot);
+                restored = await adapter.restore(field, undone.snapshot);
             } finally {
+                applying = false;
                 suppressInput = null;
+            }
+            if (session.status().generation !== generation) {
+                ui.hidePanel();
+                updateTrigger();
+                return { ok: false, stale: true };
             }
             if (!restored) {
                 session.invalidate({ clearUndo: true });
