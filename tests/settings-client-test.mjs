@@ -3,6 +3,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { readBackgroundSources } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
@@ -164,7 +165,7 @@ for (const script of ['popup/popup.js', 'options/options.js', 'translator/transl
         !/type:\s*['"]SAVE_SETTINGS['"]/.test(read(script)));
 }
 check('wiring: background still handles SAVE_SETTINGS',
-    /case\s+['"]SAVE_SETTINGS['"]/.test(read('background.js')));
+    /case\s+['"]SAVE_SETTINGS['"]/.test(readBackgroundSources()));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exitCode = 1;

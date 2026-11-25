@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { read, readBackgroundSources, readContentSources } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
-const read = rel => fs.readFileSync(path.join(repo, rel), 'utf8');
 
 let pass = 0;
 let fail = 0;
@@ -40,7 +40,7 @@ for (const [id, key] of Object.entries(expected)) {
 check('at most four suggested keys',
     Object.values(commands).filter(c => c && c.suggested_key).length <= 4);
 
-const background = read('background.js');
+const background = readBackgroundSources();
 check('background listens for commands',
     /browserAPI\.commands && browserAPI\.commands\.onCommand[\s\S]*?addListener/.test(background));
 for (const id of Object.keys(expected)) {
@@ -64,7 +64,7 @@ check('context menu translates the page through the shared helper',
 check('context menu translates the selection through the shared helper',
     /menuItemId === "translate-selection"[\s\S]{0,200}?await translateSelectionInTab\(tab\.id\)/.test(background));
 
-const content = read('content.js');
+const content = readContentSources();
 check('content script handles the compose shortcut', content.includes("case 'TRANSLATE_COMPOSE':"));
 check('content script hands the shortcut to the compose controller',
     /case 'TRANSLATE_COMPOSE':[\s\S]*?controller\.translate\(\)/.test(content));

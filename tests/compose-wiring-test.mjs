@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { read, readBackgroundSources, readContentSources } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
-const read = rel => fs.readFileSync(path.join(repo, rel), 'utf8');
 
 let pass = 0;
 let fail = 0;
@@ -26,7 +26,7 @@ function scriptsFrom(source) {
     return vm.runInContext(match[0] + '\nCONTENT_SCRIPTS;', vm.createContext({}));
 }
 
-const backgroundScripts = scriptsFrom(read('background.js'));
+const backgroundScripts = scriptsFrom(readBackgroundSources());
 const popupScripts = scriptsFrom(read('popup/popup.js')).map(file => file.replace(/^\//, ''));
 const expected = [
     'compose/policy.js',
@@ -35,7 +35,14 @@ const expected = [
     'compose/contenteditable.js',
     'compose/ui.js',
     'compose/controller.js',
-    'content.js',
+    'content/core.js',
+    'content/dom.js',
+    'content/widget.js',
+    'content/page.js',
+    'content/messages.js',
+    'content/selection.js',
+    'content/captions.js',
+    'content/startup.js',
     'captions/parser.js',
     'captions/fetcher.js',
     'captions/session.js'
@@ -48,7 +55,7 @@ for (const file of expected) {
     check(`registered script exists: ${file}`, fs.existsSync(path.join(repo, file)));
 }
 
-const content = read('content.js');
+const content = readContentSources();
 check('content script preserves its duplicate-injection guard',
     content.includes('if (window.hasLLMTranslatorContentScript)'));
 check('content script configures compose after loading settings',

@@ -3,6 +3,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { readBackgroundSources } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
@@ -135,14 +136,14 @@ function check(name, condition, detail) {
     const scripts = manifest.background.scripts;
     check('wiring: manifest loads provider transport before background',
         scripts.includes('provider-transport.js') &&
-        scripts.indexOf('provider-transport.js') < scripts.indexOf('background.js'));
+        scripts.indexOf('provider-transport.js') < scripts.indexOf('background/core.js'));
     check('wiring: service worker imports provider transport',
         /importScripts\([^)]*provider-transport\.js/.test(read('background.js')));
     check('wiring: background uses the shared transport',
-        (read('background.js').match(/ProviderTransport\.postJson\(/g) || []).length >= 4);
+        (readBackgroundSources().match(/ProviderTransport\.postJson\(/g) || []).length >= 4);
     check('wiring: provider-specific recovery behavior remains',
-        read('background.js').includes("Ollama returned 403 Forbidden") &&
-        read('background.js').includes('Server rejected structured output; retrying without response_format'));
+        readBackgroundSources().includes("Ollama returned 403 Forbidden") &&
+        readBackgroundSources().includes('Server rejected structured output; retrying without response_format'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

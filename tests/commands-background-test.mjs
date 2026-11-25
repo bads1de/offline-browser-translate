@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { backgroundFiles, read } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
-const source = fs.readFileSync(path.join(repo, 'background.js'), 'utf8');
 
 let pass = 0;
 let fail = 0;
@@ -67,7 +67,13 @@ function boot({ respond, detectLanguage = 'en', hasCommands = true } = {}) {
             unregisterContentScripts: async () => {},
             getRegisteredContentScripts: async () => []
         },
-        storage: { local: { get: async () => ({}), set: async () => {} }, onChanged: on('changed') }
+        storage: {
+            local: {
+                get: async () => ({ settings: { targetLanguage: 'ja', sourceLanguage: 'auto', cacheMode: 'off' } }),
+                set: async () => {}
+            },
+            onChanged: on('changed')
+        }
     };
     if (hasCommands) browserAPI.commands = { onCommand: on('command'), getAll: async () => [] };
 
@@ -84,7 +90,10 @@ function boot({ respond, detectLanguage = 'en', hasCommands = true } = {}) {
         DEFAULT_SETTINGS,
         Intl
     });
-    vm.runInContext(source, context, { filename: 'background.js' });
+    // Mirror the browser: every background script in manifest load order.
+    for (const file of backgroundFiles()) {
+        vm.runInContext(read(file), context, { filename: file });
+    }
 
     async function fire(command, tab = { id: 7, url: 'https://example.com/a' }) {
         const handler = (listeners.command || [])[0];
@@ -183,7 +192,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 20));
     await app.fire('translate-page');
     check('a missing content script is injected and the message retried',
         app.injected.length === 1
-        && app.injected[0].includes('content.js')
+        && app.injected[0].includes('content/core.js')
         && app.calls.length === 2
         && app.calls[1].message.type === 'START_TRANSLATION', { calls: app.calls, injected: app.injected });
 }

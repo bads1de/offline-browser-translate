@@ -3,10 +3,10 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { backgroundFiles, read } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
-const read = rel => fs.readFileSync(path.join(repo, rel), 'utf8');
 
 const listener = { addListener() {} };
 const context = {
@@ -25,7 +25,10 @@ const context = {
     ProviderTransport: { postJson: async () => { throw new Error('not stubbed'); } }
 };
 vm.createContext(context);
-vm.runInContext(read('background.js'), context);
+for (const file of backgroundFiles()) {
+    vm.runInContext(read(file), context, { filename: file });
+}
+const { callOllama, callLMStudio, translatePlamoItem } = context.LctBgTranslate;
 
 let pass = 0, fail = 0;
 function check(name, condition, detail) {
@@ -61,7 +64,7 @@ async function expectError(action, expected) {
         captured = { url, body, options };
         return { response: 'translated', done_reason: 'stop' };
     };
-    const result = await context.callOllama({
+    const result = await callOllama({
         ollamaUrl: 'http://localhost:11434/',
         temperature: 0.2,
         numCtx: 4096
@@ -79,14 +82,14 @@ async function expectError(action, expected) {
 
 {
     context.ProviderTransport.postJson = async () => { throw httpError(403, 'Forbidden'); };
-    const error = await expectError(() => context.callOllama({ ollamaUrl: 'http://localhost:11434' }, 'm', '', 'u', false));
+    const error = await expectError(() => callOllama({ ollamaUrl: 'http://localhost:11434' }, 'm', '', 'u', false));
     check('ollama: preserves the CORS-specific 403 message',
         error && error.message.includes('Ollama returned 403 Forbidden') && error.message.includes('enable CORS in Ollama'));
 }
 
 {
     context.ProviderTransport.postJson = async () => { throw httpError(503, 'unavailable'); };
-    const error = await expectError(() => context.callOllama({ ollamaUrl: 'http://localhost:11434' }, 'm', '', 'u', false));
+    const error = await expectError(() => callOllama({ ollamaUrl: 'http://localhost:11434' }, 'm', '', 'u', false));
     check('ollama: preserves HTTP error formatting',
         error && error.message === 'Ollama error (503): unavailable');
 }
@@ -98,7 +101,7 @@ async function expectError(action, expected) {
         if (calls.length === 1) throw httpError(400, 'response_format is unsupported');
         return { choices: [{ message: { content: '{"translations":[]}' }, finish_reason: 'stop' }] };
     };
-    const result = await context.callLMStudio({ lmstudioUrl: 'http://localhost:1234', temperature: 0.3 }, 'm', 'system', 'user', true);
+    const result = await callLMStudio({ lmstudioUrl: 'http://localhost:1234', temperature: 0.3 }, 'm', 'system', 'user', true);
 
     check('lmstudio: retries once without structured output',
         calls.length === 2 && calls[0].response_format && !calls[1].response_format);
@@ -108,7 +111,7 @@ async function expectError(action, expected) {
 
 {
     context.ProviderTransport.postJson = async () => { throw httpError(500, 'down'); };
-    const error = await expectError(() => context.callLMStudio({ lmstudioUrl: 'http://localhost:1234' }, 'm', '', 'u', false));
+    const error = await expectError(() => callLMStudio({ lmstudioUrl: 'http://localhost:1234' }, 'm', '', 'u', false));
     check('lmstudio: preserves HTTP error formatting', error && error.message === 'LMStudio error: down');
 }
 
@@ -118,7 +121,7 @@ async function expectError(action, expected) {
         captured = { url, body, options };
         return { message: { content: ' translated ' } };
     };
-    const result = await context.translatePlamoItem('ollama', {
+    const result = await translatePlamoItem('ollama', {
         ollamaUrl: 'http://localhost:11434',
         temperature: 0.1,
         numCtx: 2048
@@ -140,7 +143,7 @@ async function expectError(action, expected) {
         captured = { url, body, options };
         return { choices: [{ message: { content: ' translated ' } }] };
     };
-    const result = await context.translatePlamoItem('lmstudio', {
+    const result = await translatePlamoItem('lmstudio', {
         lmstudioUrl: 'http://localhost:1234',
         temperature: 0
     }, 'plamo', 'source', 'en');
@@ -155,7 +158,7 @@ async function expectError(action, expected) {
 
 {
     context.ProviderTransport.postJson = async () => { throw httpError(502, 'bad gateway'); };
-    const error = await expectError(() => context.translatePlamoItem('lmstudio', {
+    const error = await expectError(() => translatePlamoItem('lmstudio', {
         lmstudioUrl: 'http://localhost:1234'
     }, 'plamo', 'source', 'ja'));
     check('plamo openai: preserves HTTP error formatting',

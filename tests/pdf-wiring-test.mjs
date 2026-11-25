@@ -6,12 +6,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { read, readBackgroundSources } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
-const read = rel => fs.readFileSync(path.join(repo, rel), 'utf8');
 
-const bg = read('background.js');
+// Only the worker's own code: pdf/paragraphs.js defines isPdfUrl, so including
+// the shared scripts would defeat the bare-call check below.
+const bg = readBackgroundSources();
+const entry = read('background.js');
 const manifest = JSON.parse(read('manifest.json'));
 const popup = read('popup/popup.js');
 
@@ -23,8 +26,8 @@ function check(name, cond) {
 
 console.log('PDF fetch wiring:');
 // 1. Both pdf scripts are loaded in the SW and declared for Firefox.
-check('importScripts loads pdf/paragraphs.js', /importScripts\([^)]*['"]pdf\/paragraphs\.js['"]/.test(bg));
-check('importScripts loads pdf/pdf-store.js', /importScripts\([^)]*['"]pdf\/pdf-store\.js['"]/.test(bg));
+check('importScripts loads pdf/paragraphs.js', /importScripts\([^)]*['"]pdf\/paragraphs\.js['"]/.test(entry));
+check('importScripts loads pdf/pdf-store.js', /importScripts\([^)]*['"]pdf\/pdf-store\.js['"]/.test(entry));
 const scripts = manifest.background?.scripts || [];
 check('manifest background.scripts has pdf/paragraphs.js', scripts.includes('pdf/paragraphs.js'));
 check('manifest background.scripts has pdf/pdf-store.js', scripts.includes('pdf/pdf-store.js'));

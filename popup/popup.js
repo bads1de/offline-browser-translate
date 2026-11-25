@@ -6,7 +6,7 @@
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
-// Injected in this order; must match background.js CONTENT_SCRIPTS.
+// Injected in this order; must match background/content-injection.js CONTENT_SCRIPTS.
 const CONTENT_SCRIPTS = [
     '/compose/policy.js',
     '/compose/session.js',
@@ -14,7 +14,14 @@ const CONTENT_SCRIPTS = [
     '/compose/contenteditable.js',
     '/compose/ui.js',
     '/compose/controller.js',
-    '/content.js',
+    '/content/core.js',
+    '/content/dom.js',
+    '/content/widget.js',
+    '/content/page.js',
+    '/content/messages.js',
+    '/content/selection.js',
+    '/content/captions.js',
+    '/content/startup.js',
     '/captions/parser.js',
     '/captions/fetcher.js',
     '/captions/session.js'

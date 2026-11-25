@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { backgroundModuleFiles, contentFiles } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
@@ -14,8 +15,8 @@ const read = rel => fs.readFileSync(path.join(repo, rel), 'utf8');
 
 // Scripts that read the settings object. vendor/ is third-party code.
 const SCRIPTS = [
-    'background.js',
-    'content.js',
+    ...backgroundModuleFiles(),
+    ...contentFiles(),
     'cache.js',
     'options/options.js',
     'popup/popup.js',

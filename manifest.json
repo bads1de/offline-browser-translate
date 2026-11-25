@@ -36,6 +36,17 @@
       "provider-transport.js",
       "pdf/paragraphs.js",
       "pdf/pdf-store.js",
+      "background/core.js",
+      "background/providers.js",
+      "background/settings-store.js",
+      "background/glossary.js",
+      "background/prompt.js",
+      "background/translate.js",
+      "background/content-injection.js",
+      "background/captions-bridge.js",
+      "background/pdf-bridge.js",
+      "background/messages.js",
+      "background/lifecycle.js",
       "background.js"
     ],
     "service_worker": "background.js"

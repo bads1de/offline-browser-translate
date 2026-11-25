@@ -162,8 +162,28 @@ Whole-segment matches take priority over the translation cache, and loading or c
 
 ```
 ├── manifest.json      # Extension manifest (MV3)
-├── background.js      # Background script (LLM API, settings, message routing)
-├── content.js         # Content script (DOM manipulation)
+├── background.js      # Background entry point (loads background/*)
+├── background/        # Background worker modules
+│   ├── core.js        # Browser API handle, debug/perf helpers
+│   ├── providers.js   # Provider detection, model listing
+│   ├── settings-store.js # Cached settings
+│   ├── glossary.js    # Glossary matching and prompt hints
+│   ├── prompt.js      # Prompt templates, response parsing
+│   ├── translate.js   # Translation pipeline, batching, cache
+│   ├── content-injection.js # Content script registration, entry points
+│   ├── captions-bridge.js # YouTube caption bridge
+│   ├── pdf-bridge.js  # PDF probe/fetch
+│   ├── messages.js    # Runtime message router
+│   └── lifecycle.js   # Install, context menu, shortcuts
+├── content/           # Content script fragments (loaded in order)
+│   ├── core.js        # Bootstrap, compose wiring, settings listener
+│   ├── dom.js         # Text extraction, sentence splitting, replacement
+│   ├── widget.js      # Progress pill, toasts, page language
+│   ├── page.js        # Page/selection translation, auto-translate
+│   ├── messages.js    # Runtime message router
+│   ├── selection.js   # Floating translate button
+│   ├── captions.js    # YouTube caption bridge
+│   └── startup.js     # First settings fetch and storage listener
 ├── compose/           # In-place draft translation
 │   ├── policy.js      # Field eligibility and draft limits
 │   ├── session.js     # Preview, replacement, undo, stale-result state

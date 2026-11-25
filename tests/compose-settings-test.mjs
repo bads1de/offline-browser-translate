@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import { read, readBackgroundSources } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.join(here, '..');
-const read = rel => fs.readFileSync(path.join(repo, rel), 'utf8');
 
 let pass = 0;
 let fail = 0;
@@ -25,7 +25,7 @@ check('compose translation defaults off', defaults.composeTranslationEnabled ===
 check('compose source language defaults to auto', defaults.composeSourceLanguage === 'auto');
 check('compose target language defaults to English', defaults.composeTargetLanguage === 'en');
 
-const background = read('background.js');
+const background = readBackgroundSources();
 const needsMatch = background.match(/function needsContentScript\(settings\) \{[\s\S]*?\n\}/);
 check('background exposes needsContentScript', !!needsMatch);
 if (needsMatch) {

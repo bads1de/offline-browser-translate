@@ -5,9 +5,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBackgroundSources } from './background-source.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const src = fs.readFileSync(path.join(here, '..', 'background.js'), 'utf8');
+const src = readBackgroundSources();
 
 const start = src.indexOf('const CAPTURE_TIMEOUT_MS');
 const end = src.indexOf('async function releaseCaptionCapture');

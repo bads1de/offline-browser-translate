@@ -187,8 +187,28 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 
 ```
 ├── manifest.json      # 拡張機能マニフェスト (MV3)
-├── background.js      # バックグラウンドスクリプト（LLM API、設定、メッセージルーティング）
-├── content.js         # コンテンツスクリプト（DOM 操作）
+├── background.js      # バックグラウンドのエントリポイント（background/* を読み込む）
+├── background/        # バックグラウンドのモジュール群
+│   ├── core.js        # ブラウザ API、デバッグ・perf ヘルパー
+│   ├── providers.js   # プロバイダ検出・モデル一覧
+│   ├── settings-store.js # 設定キャッシュ
+│   ├── glossary.js    # 用語集マッチングとプロンプトヒント
+│   ├── prompt.js      # プロンプトテンプレートと応答パース
+│   ├── translate.js   # 翻訳パイプライン・バッチ・キャッシュ
+│   ├── content-injection.js # コンテンツスクリプト登録・各エントリポイント
+│   ├── captions-bridge.js # YouTube 字幕ブリッジ
+│   ├── pdf-bridge.js  # PDF の probe/fetch
+│   ├── messages.js    # メッセージルーター
+│   └── lifecycle.js   # インストール・コンテキストメニュー・ショートカット
+├── content/           # コンテンツスクリプトの断片（この順で読み込み）
+│   ├── core.js        # 起動処理・compose 配線・設定リスナー
+│   ├── dom.js         # テキスト抽出・文分割・差し替え
+│   ├── widget.js      # 進捗ピル・トースト・ページ言語判定
+│   ├── page.js        # ページ/選択範囲の翻訳・自動翻訳
+│   ├── messages.js    # メッセージルーター
+│   ├── selection.js   # 選択時のフローティングボタン
+│   ├── captions.js    # YouTube 字幕ブリッジ
+│   └── startup.js     # 初回の設定取得と設定変更リスナー
 ├── compose/           # 入力欄でのその場翻訳
 │   ├── policy.js      # 対象判定と下書きの上限
 │   ├── session.js     # プレビュー・差し替え・undo・古い結果の破棄
