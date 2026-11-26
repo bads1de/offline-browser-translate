@@ -12,7 +12,7 @@
 if (typeof importScripts === 'function') {
     importScripts(
         // Shared, non-background scripts
-        'settings.js',
+        'settings-defaults.js',
         'languages.js',
         'cache.js',
         'provider-transport.js',

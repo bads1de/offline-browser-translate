@@ -33,6 +33,12 @@ function detectUiLanguage() {
     }
 }
 
+// Resolve the saved settings.uiLanguage ('auto' = browser locale).
+function uiLanguageFromSettings(settings) {
+    const preferred = settings && settings.uiLanguage;
+    return (preferred === 'ja' || preferred === 'en') ? preferred : detectUiLanguage();
+}
+
 function setUiLanguage(lang) {
     uiLanguage = (lang === 'ja' || lang === 'en') ? lang : detectUiLanguage();
     document.documentElement.lang = uiLanguage;

@@ -6,7 +6,7 @@
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
-// DEFAULT_SETTINGS lives in ../settings.js, shared with the other pages.
+// DEFAULT_SETTINGS lives in ../settings-defaults.js, shared with the other pages.
 
 // Format descriptions, keyed by format — values are i18n dictionary keys.
 const FORMAT_DESCRIPTIONS = {
@@ -472,10 +472,7 @@ function initPromptEditors() {
 // ============================================================================
 
 function resolveUiLanguage() {
-    if (currentSettings.uiLanguage === 'ja' || currentSettings.uiLanguage === 'en') {
-        return currentSettings.uiLanguage;
-    }
-    return detectUiLanguage();
+    return uiLanguageFromSettings(currentSettings);
 }
 
 function updateUiLangToggle() {
@@ -623,8 +620,7 @@ async function loadModels(forceRefresh = false) {
 // Load settings from storage
 async function loadSettings() {
     try {
-        const settings = await settingsClient.load();
-        currentSettings = { ...DEFAULT_SETTINGS, ...settings };
+        currentSettings = await settingsClient.load(DEFAULT_SETTINGS);
     } catch (e) {
         console.error('Failed to load settings:', e);
     }

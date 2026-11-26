@@ -21,7 +21,7 @@ export function backgroundFiles() {
 }
 
 // Only the worker's own code (entry + background/ modules), without the shared
-// page scripts (settings.js, languages.js, ...) that it also imports.
+// page scripts (settings-defaults.js, languages.js, ...) that it also imports.
 export function backgroundModuleFiles() {
     return backgroundFiles().filter(file => file === 'background.js' || file.startsWith('background/'));
 }

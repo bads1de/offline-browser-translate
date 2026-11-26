@@ -262,7 +262,7 @@ node tests/pdf-head-functional-test.mjs # FR-12 HEAD プローブ（ローカル
 
 ```
 for test in tests/compose-*.mjs; do node "$test" || exit 1; done
-node tests/settings-keys-test.mjs # settings.js のキーと各スクリプトの参照
+node tests/settings-keys-test.mjs # settings-defaults.js のキーと各スクリプトの参照
 ```
 
 ## 開発

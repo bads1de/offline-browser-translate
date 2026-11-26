@@ -23,12 +23,14 @@
         let savedSettings = null;
 
         return {
-            async load() {
+            // `defaults` fills in keys the stored settings do not have yet, so the
+            // page and the diff snapshot start from the same baseline.
+            async load(defaults = {}) {
                 const response = await api.runtime.sendMessage({ type: 'GET_SETTINGS' });
                 if (!response || response.error) {
                     throw new Error(response && response.error || 'Failed to load settings');
                 }
-                savedSettings = clone(response.settings || {});
+                savedSettings = clone({ ...defaults, ...(response.settings || {}) });
                 return clone(savedSettings);
             },
 

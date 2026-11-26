@@ -27,7 +27,7 @@ const CONTENT_SCRIPTS = [
     '/captions/session.js'
 ];
 
-// DEFAULT_SETTINGS lives in ../settings.js, shared with the other pages.
+// DEFAULT_SETTINGS lives in ../settings-defaults.js, shared with the other pages.
 
 // DOM Elements
 const elements = {
@@ -158,10 +158,7 @@ function showToast(message, type = 'success', duration = 3000) {
 // ============================================================================
 
 function resolvePopupUiLanguage() {
-    if (currentSettings.uiLanguage === 'ja' || currentSettings.uiLanguage === 'en') {
-        return currentSettings.uiLanguage;
-    }
-    return detectUiLanguage();
+    return uiLanguageFromSettings(currentSettings);
 }
 
 // Re-render the pieces whose text is computed in JS (static HTML is covered
@@ -309,8 +306,7 @@ async function checkTranslationStatus() {
 // Load settings from storage
 async function loadSettings() {
     try {
-        const settings = await settingsClient.load();
-        currentSettings = { ...DEFAULT_SETTINGS, ...settings };
+        currentSettings = await settingsClient.load(DEFAULT_SETTINGS);
     } catch (e) {
         console.error('Failed to load settings:', e);
     }

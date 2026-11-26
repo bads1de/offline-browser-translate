@@ -13,7 +13,7 @@ const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
 const PINNED_LANGUAGES = ['en', 'es', 'fr', 'de', 'zh', 'ja'];
 
-// DEFAULT_SETTINGS lives in ../settings.js, shared with the other pages.
+// DEFAULT_SETTINGS lives in ../settings-defaults.js, shared with the other pages.
 
 // ============================================================================
 // State
@@ -540,8 +540,7 @@ async function loadModels() {
 
 async function loadSettings() {
     try {
-        const settings = await settingsClient.load();
-        currentSettings = { ...DEFAULT_SETTINGS, ...settings };
+        currentSettings = await settingsClient.load(DEFAULT_SETTINGS);
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
@@ -553,10 +552,7 @@ async function loadSettings() {
 // dictionary file paints with the detected locale first; this re-applies
 // once the saved preference is known, and repaints the runtime-built text.
 function resolveTranslatorUiLanguage() {
-    if (currentSettings.uiLanguage === 'ja' || currentSettings.uiLanguage === 'en') {
-        return currentSettings.uiLanguage;
-    }
-    return detectUiLanguage();
+    return uiLanguageFromSettings(currentSettings);
 }
 
 function applyUiLanguage() {

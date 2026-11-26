@@ -236,7 +236,7 @@ node tests/pdf-head-functional-test.mjs # FR-12 HEAD probe vs a local server
 Settings defaults have one guard:
 
 ```
-node tests/settings-keys-test.mjs  # settings.js keys vs. keys the scripts read
+node tests/settings-keys-test.mjs  # settings-defaults.js keys vs. keys the scripts read
 ```
 
 Keyboard shortcuts have one guard:
