@@ -82,7 +82,7 @@
 
 ### FR-5 翻訳
 
-- 翻訳は既存の `TRANSLATE` メッセージ (`background.js` → `translate()`) をそのまま呼ぶ。新しい LLM クライアントは作らない
+- 翻訳は既存の `TRANSLATE` メッセージ (`background/translate.js` → `translate()`) をそのまま呼ぶ。新しい LLM クライアントは作らない
 - `sourceLanguage` はトラックの `languageCode` (ASR `a.ja` 等は `ja` に正規化)、`targetLanguage` はページ翻訳と同じ設定値を共有する
 - 1 セッション 1 文が 1 リクエスト。文連結済みなのでバッチは原則使わない
 - 短縮 UI は不要 (キューは画面に出すだけ)。温度などパラメータは既存設定に従う
@@ -181,7 +181,7 @@
 | `captions/fetcher.js` | プレイヤーキャプチャ本線 → 直接 GET フォールバック (新規) |
 | `captions/session.js` | 再生同期・翻訳キュー・シャドウルートのオーバーレイ描画 (新規) |
 | `content.js` | `LctBridge` の配線と `TOGGLE_YOUTUBE_CAPTIONS` / `SET_YOUTUBE_CAPTION_MODE` / `GET_YOUTUBE_CAPTION_STATUS`。字幕本体は captions/ へ分離済み (e8340e2) |
-| `background.js` | `GET_PLAYER_CAPTIONS` / `CAPTURE_PLAYER_CAPTIONS` / `FETCH_TIMEDTEXT` を追加 (URL はホスト allowlist + パス検証)。翻訳は既存 `TRANSLATE` を再利用 |
+| `background/captions-bridge.js` | `GET_PLAYER_CAPTIONS` / `CAPTURE_PLAYER_CAPTIONS` / `FETCH_TIMEDTEXT` を追加 (URL はホスト allowlist + パス検証)。翻訳は既存 `TRANSLATE` を再利用 |
 | `manifest.json` | 権限変更なし (Phase 1)。MAIN world の executeScript は `scripting` + `activeTab` で可 |
 | `popup/popup.html|js|css` | YouTube 字幕 ON/OFF・表示モード (置き換え/バイリンガル) の追加 |
 | `tests/caption-*.mjs` | ブラウザ不要のユニットテスト (selftest / wiring / capture) (新規) |

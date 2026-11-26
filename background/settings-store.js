@@ -1,7 +1,7 @@
 /**
  * Cached settings shared by every background feature.
  *
- * Exposed as `LctBgSettings` on the global object. Loaded by background.js
+ * Exposed as `LctBgSettings` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

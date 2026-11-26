@@ -1,7 +1,7 @@
 /**
  * YouTube caption bridge: page-world timedtext fetch and player-driven capture.
  *
- * Exposed as `LctBgCaptions` on the global object. Loaded by background.js
+ * Exposed as `LctBgCaptions` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

@@ -138,7 +138,7 @@ function check(name, condition, detail) {
         scripts.includes('provider-transport.js') &&
         scripts.indexOf('provider-transport.js') < scripts.indexOf('background/core.js'));
     check('wiring: service worker imports provider transport',
-        /importScripts\([^)]*provider-transport\.js/.test(read('background.js')));
+        /importScripts\([^)]*provider-transport\.js/.test(read('background/entry.js')));
     check('wiring: background uses the shared transport',
         (readBackgroundSources().match(/ProviderTransport\.postJson\(/g) || []).length >= 4);
     check('wiring: provider-specific recovery behavior remains',

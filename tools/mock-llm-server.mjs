@@ -2,8 +2,8 @@
  * Mock LLM server for measuring the extension's own overhead.
  *
  * Speaks both the Ollama and the OpenAI-compatible subset of the API surface
- * background.js uses, and answers instantly with deterministic "translations"
- * derived from the batch prompt it received. Point the extension at this
+ * the background worker uses, and answers instantly with deterministic
+ * "translations" derived from the batch prompt it received. Point the extension at this
  * server (Provider: LM Studio/OpenAI-compatible, URL http://127.0.0.1:9101)
  * and every measured millisecond is extension overhead, not model time.
  *

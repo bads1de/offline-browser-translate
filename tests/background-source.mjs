@@ -2,7 +2,7 @@
 //
 // The worker is split into background/ modules; manifest `background.scripts`
 // is the single ordered list of what makes it up (and matches the importScripts
-// order in background.js). Tests that used to read background.js as one file
+// order in background/entry.js). Tests that used to read the worker as one file
 // read the joined sources through here instead.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,10 +20,11 @@ export function backgroundFiles() {
     return JSON.parse(read('manifest.json')).background.scripts;
 }
 
-// Only the worker's own code (entry + background/ modules), without the shared
-// page scripts (settings-defaults.js, languages.js, ...) that it also imports.
+// Only the worker's own code (background/ modules and their entry point),
+// without the shared page scripts (settings/defaults.js, languages.js, ...)
+// that it also imports.
 export function backgroundModuleFiles() {
-    return backgroundFiles().filter(file => file === 'background.js' || file.startsWith('background/'));
+    return backgroundFiles().filter(file => file.startsWith('background/'));
 }
 
 // The worker's own sources joined, for the wiring tests that grep for code.

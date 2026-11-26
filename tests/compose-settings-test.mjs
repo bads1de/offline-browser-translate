@@ -20,7 +20,7 @@ function check(name, condition, detail) {
     }
 }
 
-const defaults = vm.runInContext(read('settings-defaults.js') + '\nDEFAULT_SETTINGS;', vm.createContext({}));
+const defaults = vm.runInContext(read('settings/defaults.js') + '\nDEFAULT_SETTINGS;', vm.createContext({}));
 check('compose translation defaults off', defaults.composeTranslationEnabled === false);
 check('compose source language defaults to auto', defaults.composeSourceLanguage === 'auto');
 check('compose target language defaults to English', defaults.composeTargetLanguage === 'en');

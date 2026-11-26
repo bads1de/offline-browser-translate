@@ -187,8 +187,11 @@ TSV 形式の辞書を読み込み（Options → Glossary）、特定の用語�
 
 ```
 ├── manifest.json      # 拡張機能マニフェスト (MV3)
-├── background.js      # バックグラウンドのエントリポイント（background/* を読み込む）
-├── background/        # バックグラウンドのモジュール群
+├── settings/
+│   ├── defaults.js    # DEFAULT_SETTINGS（唯一の定義元）
+│   └── client.js      # ページ共通の設定読み込み・差分保存ヘルパー
+├── background/        # バックグラウンドワーカー（以下のファイルがその実体）
+│   ├── entry.js       # エントリポイント（下の各ファイルを読み込む）
 │   ├── core.js        # ブラウザ API、デバッグ・perf ヘルパー
 │   ├── providers.js   # プロバイダ検出・モデル一覧
 │   ├── settings-store.js # 設定キャッシュ
@@ -262,7 +265,7 @@ node tests/pdf-head-functional-test.mjs # FR-12 HEAD プローブ（ローカル
 
 ```
 for test in tests/compose-*.mjs; do node "$test" || exit 1; done
-node tests/settings-keys-test.mjs # settings-defaults.js のキーと各スクリプトの参照
+node tests/settings-keys-test.mjs # settings/defaults.js のキーと各スクリプトの参照
 ```
 
 ## 開発

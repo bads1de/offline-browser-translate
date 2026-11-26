@@ -1,7 +1,7 @@
 /**
  * Local LLM provider detection, model listing and model selection.
  *
- * Exposed as `LctBgProviders` on the global object. Loaded by background.js
+ * Exposed as `LctBgProviders` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

@@ -1,7 +1,7 @@
 /**
  * Runtime message router for every feature that talks to the background.
  *
- * Exposed as `LctBgMessages` on the global object. Loaded by background.js
+ * Exposed as `LctBgMessages` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

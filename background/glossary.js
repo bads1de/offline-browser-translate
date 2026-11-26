@@ -2,7 +2,7 @@
  * User glossary: lazily loaded dictionary, Aho-Corasick matching, and the
  * prompt block built from the terms found in a batch.
  *
- * Exposed as `LctBgGlossary` on the global object. Loaded by background.js
+ * Exposed as `LctBgGlossary` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

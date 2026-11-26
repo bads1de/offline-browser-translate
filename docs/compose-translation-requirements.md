@@ -153,7 +153,7 @@ Phase 1 の対象は document 配下の `<textarea>` のみとする。以下の
 
 ### FR-11 設定
 
-`settings-defaults.js` の `DEFAULT_SETTINGS` に以下を追加する。既定値はこのファイルにのみ定義する。
+`settings/defaults.js` の `DEFAULT_SETTINGS` に以下を追加する。既定値はこのファイルにのみ定義する。
 
 - `composeTranslationEnabled: false`
 - `composeSourceLanguage: 'auto'`
@@ -237,8 +237,8 @@ Options に以下を表示する。
 | `compose/ui.js` | トリガー・プレビュー・undo の closed shadow root UI（新規） |
 | `compose/controller.js` | focus/input/composition イベントと `TRANSLATE` 呼び出しの配線（新規） |
 | `content.js` | compose controller の初期化・無効化・page translation との分離 |
-| `background.js` | `needsContentScript()` に compose 設定を追加。翻訳処理自体は変更しない |
-| `settings-defaults.js` | compose 用設定の既定値を追加 |
+| `background/content-injection.js` | `needsContentScript()` に compose 設定を追加。翻訳処理自体は変更しない |
+| `settings/defaults.js` | compose 用設定の既定値を追加 |
 | `options/options.html\|js\|css` | 有効化・言語設定・権限要求・説明表示 |
 | `_locales/` | 英語・日本語 UI 文言 |
 | `manifest.json` | 変更なし（既存 optional `<all_urls>` を使用） |

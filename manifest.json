@@ -30,7 +30,7 @@
   },
   "background": {
     "scripts": [
-      "settings-defaults.js",
+      "settings/defaults.js",
       "languages.js",
       "cache.js",
       "provider-transport.js",
@@ -47,9 +47,9 @@
       "background/pdf-bridge.js",
       "background/messages.js",
       "background/lifecycle.js",
-      "background.js"
+      "background/entry.js"
     ],
-    "service_worker": "background.js"
+    "service_worker": "background/entry.js"
   },
   "commands": {
     "translate-page": {

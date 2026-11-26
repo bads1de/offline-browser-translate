@@ -1,7 +1,7 @@
 /**
  * PDF fetch bridge: HEAD-probes and byte fetches for the PDF viewer (FR-1/FR-12).
  *
- * Exposed as `LctBgPdf` on the global object. Loaded by background.js
+ * Exposed as `LctBgPdf` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

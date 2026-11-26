@@ -162,8 +162,11 @@ Whole-segment matches take priority over the translation cache, and loading or c
 
 ```
 ├── manifest.json      # Extension manifest (MV3)
-├── background.js      # Background entry point (loads background/*)
-├── background/        # Background worker modules
+├── settings/
+│   ├── defaults.js    # DEFAULT_SETTINGS, the single source of truth
+│   └── client.js      # Settings load/diff/save helper shared by the pages
+├── background/        # Background worker (everything below is its code)
+│   ├── entry.js       # Entry point (loads the files below)
 │   ├── core.js        # Browser API handle, debug/perf helpers
 │   ├── providers.js   # Provider detection, model listing
 │   ├── settings-store.js # Cached settings
@@ -236,7 +239,7 @@ node tests/pdf-head-functional-test.mjs # FR-12 HEAD probe vs a local server
 Settings defaults have one guard:
 
 ```
-node tests/settings-keys-test.mjs  # settings-defaults.js keys vs. keys the scripts read
+node tests/settings-keys-test.mjs  # settings/defaults.js keys vs. keys the scripts read
 ```
 
 Keyboard shortcuts have one guard:

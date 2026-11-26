@@ -1,5 +1,5 @@
 // Wiring regression test for the PDF fetch path (FR-1/FR-2).
-// Guards against the real bug "isPdfUrl is not defined": background.js must call
+// Guards against the real bug "isPdfUrl is not defined": background/entry.js must call
 // the qualified LctPdfParagraphs.isPdfUrl, never a bare global isPdfUrl().
 // Run: node tests/pdf-wiring-test.mjs
 import fs from 'node:fs';
@@ -14,7 +14,7 @@ const repo = path.join(here, '..');
 // Only the worker's own code: pdf/paragraphs.js defines isPdfUrl, so including
 // the shared scripts would defeat the bare-call check below.
 const bg = readBackgroundSources();
-const entry = read('background.js');
+const entry = read('background/entry.js');
 const manifest = JSON.parse(read('manifest.json'));
 const popup = read('popup/popup.js');
 
@@ -26,8 +26,8 @@ function check(name, cond) {
 
 console.log('PDF fetch wiring:');
 // 1. Both pdf scripts are loaded in the SW and declared for Firefox.
-check('importScripts loads pdf/paragraphs.js', /importScripts\([^)]*['"]pdf\/paragraphs\.js['"]/.test(entry));
-check('importScripts loads pdf/pdf-store.js', /importScripts\([^)]*['"]pdf\/pdf-store\.js['"]/.test(entry));
+check('importScripts loads pdf/paragraphs.js', /importScripts\([^)]*['"]\/?pdf\/paragraphs\.js['"]/.test(entry));
+check('importScripts loads pdf/pdf-store.js', /importScripts\([^)]*['"]\/?pdf\/pdf-store\.js['"]/.test(entry));
 const scripts = manifest.background?.scripts || [];
 check('manifest background.scripts has pdf/paragraphs.js', scripts.includes('pdf/paragraphs.js'));
 check('manifest background.scripts has pdf/pdf-store.js', scripts.includes('pdf/pdf-store.js'));
@@ -35,7 +35,7 @@ check('manifest background.scripts has pdf/pdf-store.js', scripts.includes('pdf/
 // 2. FETCH_PDF handler exists and uses QUALIFIED helpers (the actual bug).
 check("background has case 'FETCH_PDF'", /case\s+'FETCH_PDF'/.test(bg));
 const bareIsPdfUrl = bg.match(/(?<![.\w])isPdfUrl\s*\(/g) || [];
-check('no bare isPdfUrl() call in background.js', bareIsPdfUrl.length === 0);
+check('no bare isPdfUrl() call in the background sources', bareIsPdfUrl.length === 0);
 check('background wires LctPdfParagraphs helper (qualified isPdfUrl)', /self\.LctPdfParagraphs/.test(bg));
 check('background uses LctPdfStore.savePdf', /LctPdfStore\.savePdf\s*\(/.test(bg));
 check('background validates %PDF- magic bytes', bg.includes("'%PDF-'"));

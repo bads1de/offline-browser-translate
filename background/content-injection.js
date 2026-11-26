@@ -2,7 +2,7 @@
  * Content script registration and the translation entry points shared by the
  * context menu and the keyboard shortcuts.
  *
- * Exposed as `LctBgContent` on the global object. Loaded by background.js
+ * Exposed as `LctBgContent` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

@@ -2,7 +2,7 @@
  * Background core: browser API handle, debug logging, perf marks and the
  * small helpers every other background module shares.
  *
- * Exposed as `LctBgCore` on the global object. Loaded by background.js
+ * Exposed as `LctBgCore` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

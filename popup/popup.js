@@ -27,7 +27,7 @@ const CONTENT_SCRIPTS = [
     '/captions/session.js'
 ];
 
-// DEFAULT_SETTINGS lives in ../settings-defaults.js, shared with the other pages.
+// DEFAULT_SETTINGS lives in ../settings/defaults.js, shared with the other pages.
 
 // DOM Elements
 const elements = {

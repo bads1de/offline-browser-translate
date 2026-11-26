@@ -80,7 +80,7 @@
 
 ### FR-5 翻訳
 
-- 翻訳は既存の `TRANSLATE` メッセージ (`background.js` → `translate()`) をそのままバッチで呼ぶ。新しい LLM クライアントは作らない
+- 翻訳は既存の `TRANSLATE` メッセージ (`background/translate.js` → `translate()`) をそのままバッチで呼ぶ。新しい LLM クライアントは作らない
 - 1 段落 = 1 アイテムとして既存のバッチ機構（`maxConcurrentRequests` / `maxTokens` / 既存設定）に乗せる。文連結のような特別な前処理は行わない
 - `sourceLanguage` は Phase 1 では既存設定値を流用し、Phase 2 で PDF のメタデータ・フォント情報からの自動推定を検討する
 - `targetLanguage` はページ翻訳と同じ設定値を共有する
@@ -190,7 +190,7 @@
 | `vendor/pdfjs/` | Mozilla pdf.js prebuilt (`pdf.min.mjs`, `pdf.worker.min.mjs`)（新規・git 同梱可、数 MB） |
 | `tests/pdf-*.mjs` | 段落復元・2カラム判定のブラウザフリーユニットテスト（新規） |
 | `popup/popup.html\|js\|css` | PDF タブ検知で「この PDF を翻訳」ボタンを出す（pdf.js には触れない） |
-| `background.js` | `FETCH_PDF`（activeTab 権限でバイト取得 → IndexedDB 保存）の新メッセージ。翻訳は既存 `TRANSLATE` を再利用 |
+| `background/pdf-bridge.js` | `FETCH_PDF`（activeTab 権限でバイト取得 → IndexedDB 保存）の新メッセージ。翻訳は既存 `TRANSLATE` を再利用 |
 | `manifest.json` | Phase 1〜2: 権限変更なし。Phase 3: `declarativeNetRequest` + `web_accessible_resources` |
 | `cache.js` | 変更なし |
 | `options/` | Phase 2 で表示モード初期値設定（任意）、Phase 3 でリダイレクト opt-in トグル |

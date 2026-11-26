@@ -1,7 +1,7 @@
 /**
  * Extension lifecycle: first-run setup, context menu and keyboard shortcuts.
  *
- * Exposed as `LctBgLifecycle` on the global object. Loaded by background.js
+ * Exposed as `LctBgLifecycle` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

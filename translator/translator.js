@@ -13,7 +13,7 @@ const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
 const PINNED_LANGUAGES = ['en', 'es', 'fr', 'de', 'zh', 'ja'];
 
-// DEFAULT_SETTINGS lives in ../settings-defaults.js, shared with the other pages.
+// DEFAULT_SETTINGS lives in ../settings/defaults.js, shared with the other pages.
 
 // ============================================================================
 // State
@@ -101,9 +101,9 @@ function toggleTheme() {
 // ============================================================================
 
 // 'auto' is a source-only pseudo-language: most prompt formats never read
-// {{sourceLang}}, so forcing a real pick there is meaningless. background.js
-// already treats sourceLanguage:'auto' as "unspecified, default to English if
-// the active format needs it" (see translate() in background.js).
+// {{sourceLang}}, so forcing a real pick there is meaningless. The background
+// worker already treats sourceLanguage:'auto' as "unspecified, default to
+// English if the active format needs it" (see translate() in background/translate.js).
 const AUTO_SOURCE_CODE = 'auto';
 
 function langDisplayName(code) {
@@ -523,7 +523,7 @@ async function loadModels() {
             // Request format is derived from the model automatically (requestFormat: 'auto')
             // by the background script — no need to set it here.
 
-            // Save the selected model to settings so background.js uses it
+            // Save the selected model to settings so the background worker uses it
             currentSettings.selectedModel = chosen.id;
             currentSettings = await settingsClient.save(currentSettings);
         }

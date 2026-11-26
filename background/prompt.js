@@ -1,7 +1,7 @@
 /**
  * Prompt templates, prompt building and response parsing.
  *
- * Exposed as `LctBgPrompt` on the global object. Loaded by background.js
+ * Exposed as `LctBgPrompt` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

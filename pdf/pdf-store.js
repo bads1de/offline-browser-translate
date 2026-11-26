@@ -6,7 +6,7 @@
  * exceeding runtime.sendMessage size limits. Shared origin (extension
  * page / service worker / moz-extension page), newest MAX_FILES kept.
  *
- * Loaded as a classic script in background.js (importScripts) and the
+ * Loaded as a classic script in background/entry.js (importScripts) and the
  * viewer page; exposed as `LctPdfStore`.
  */
 (function (scope) {

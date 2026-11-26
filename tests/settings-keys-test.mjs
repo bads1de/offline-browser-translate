@@ -1,6 +1,6 @@
-// Key-set regression test for the shared settings defaults (settings-defaults.js).
+// Key-set regression test for the shared settings defaults (settings/defaults.js).
 // Guards the drift that used to exist as four separate DEFAULT_SETTINGS copies:
-// a script may only read keys that settings-defaults.js defines, and settings-defaults.js may only
+// a script may only read keys that settings/defaults.js defines, and settings/defaults.js may only
 // define keys some script actually reads.
 // Run: node tests/settings-keys-test.mjs
 import fs from 'node:fs';
@@ -44,7 +44,7 @@ function check(name, cond, detail) {
 }
 
 // Drop comments and 'single'/"double" quoted strings so a path mention like
-// 'settings-defaults.js' can never be read as a `settings-defaults.js` key. Template literals are
+// 'settings/defaults.js' can never be read as a `settings/defaults.js` key. Template literals are
 // left intact: `${settings.key}` is a real read. Line-comment removal skips the
 // `//` of a URL.
 function codeOnly(src) {
@@ -73,16 +73,16 @@ function collectKeyReads(rel) {
 
 console.log('Settings key set:');
 
-// 1. settings-defaults.js is the only definition and it exports a real object.
-const defaults = vm.runInContext(read('settings-defaults.js') + '\nDEFAULT_SETTINGS;', vm.createContext({}));
+// 1. settings/defaults.js is the only definition and it exports a real object.
+const defaults = vm.runInContext(read('settings/defaults.js') + '\nDEFAULT_SETTINGS;', vm.createContext({}));
 const defaultKeys = Object.keys(defaults || {});
-check('settings-defaults.js exports DEFAULT_SETTINGS', !!defaults && typeof defaults === 'object');
-check('settings-defaults.js defines a usable key set', defaultKeys.length >= 20, defaultKeys.length + ' keys');
+check('settings/defaults.js exports DEFAULT_SETTINGS', !!defaults && typeof defaults === 'object');
+check('settings/defaults.js defines a usable key set', defaultKeys.length >= 20, defaultKeys.length + ' keys');
 
-const definingFiles = [...SCRIPTS, 'settings-defaults.js'].filter(rel =>
+const definingFiles = [...SCRIPTS, 'settings/defaults.js'].filter(rel =>
     /DEFAULT_SETTINGS\s*=\s*\{/.test(codeOnly(read(rel))));
 check('no other script defines DEFAULT_SETTINGS',
-    definingFiles.length === 1 && definingFiles[0] === 'settings-defaults.js',
+    definingFiles.length === 1 && definingFiles[0] === 'settings/defaults.js',
     'defining files: ' + definingFiles.join(', '));
 
 // 2. Gather every key read anywhere in the extension.
@@ -94,16 +94,16 @@ for (const rel of SCRIPTS) {
     }
 }
 
-// 3. No script may read a key settings-defaults.js doesn't define (typo, or a setting
+// 3. No script may read a key settings/defaults.js doesn't define (typo, or a setting
 //    that was removed without updating its reader).
 const unknown = [...reads.keys()].filter(k => !defaultKeys.includes(k)).sort();
-check('every key read by a script exists in settings-defaults.js', unknown.length === 0,
+check('every key read by a script exists in settings/defaults.js', unknown.length === 0,
     unknown.map(k => k + ' <- ' + [...reads.get(k)].join(', ')).join('\n'));
 
 // 4. Every default must have a reader, so a renamed or dropped setting can't
 //    leave a stale entry behind that silently does nothing.
 const unread = defaultKeys.filter(k => !reads.has(k)).sort();
-check('every key in settings-defaults.js is read by some script', unread.length === 0,
+check('every key in settings/defaults.js is read by some script', unread.length === 0,
     'never read: ' + unread.join(', '));
 
 console.log(`\n${defaultKeys.length} default keys, ${reads.size} distinct keys read`);

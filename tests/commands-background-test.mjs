@@ -30,7 +30,7 @@ const DEFAULT_SETTINGS = {
     debug: false
 };
 
-// Boots background.js against a fake browser API so the command listener can be
+// Boots the background worker against a fake browser API so the command listener can be
 // driven directly. `respond` decides what the page answers; throwing models a
 // tab where the content script is not there yet.
 function boot({ respond, detectLanguage = 'en', hasCommands = true } = {}) {

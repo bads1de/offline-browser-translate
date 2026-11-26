@@ -1,4 +1,4 @@
-// Exercises the MAIN-world capture hook that runs inside background.js's
+// Exercises the MAIN-world capture hook that runs inside the background worker's
 // executeScript func. Extracts that function body and drives it with fake
 // fetch/XHR/player objects, so the hook, wait/resolve and release paths are
 // covered without a browser.

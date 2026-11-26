@@ -2,7 +2,7 @@
  * Translation pipeline: provider calls, batching, cache, glossary and the
  * per-item fallbacks.
  *
- * Exposed as `LctBgTranslate` on the global object. Loaded by background.js
+ * Exposed as `LctBgTranslate` on the global object. Loaded by background/entry.js
  * (importScripts) and by manifest `background.scripts` for Firefox.
  */
 

@@ -11,7 +11,7 @@ const read = rel => fs.readFileSync(path.join(repo, rel), 'utf8');
 
 const context = { window: {}, structuredClone, console };
 vm.createContext(context);
-vm.runInContext(read('settings-client.js'), context);
+vm.runInContext(read('settings/client.js'), context);
 const { settingsPatch, createSettingsClient } = context.window.SettingsClient;
 
 let pass = 0, fail = 0;
@@ -157,8 +157,8 @@ for (const page of ['popup/popup.html', 'options/options.html', 'translator/tran
     const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(match => match[1]);
     const pageScript = page.split('/')[1].replace(/\.html$/, '.js');
     check('wiring: ' + page + ' loads the settings client before its page script',
-        scripts.includes('../settings-client.js') &&
-        scripts.indexOf('../settings-client.js') < scripts.indexOf(pageScript));
+        scripts.includes('../settings/client.js') &&
+        scripts.indexOf('../settings/client.js') < scripts.indexOf(pageScript));
 }
 for (const script of ['popup/popup.js', 'options/options.js', 'translator/translator.js']) {
     check('wiring: ' + script + ' has no direct SAVE_SETTINGS message',

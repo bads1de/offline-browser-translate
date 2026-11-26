@@ -6,7 +6,7 @@
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 const settingsClient = SettingsClient.createSettingsClient(browserAPI);
 
-// DEFAULT_SETTINGS lives in ../settings-defaults.js, shared with the other pages.
+// DEFAULT_SETTINGS lives in ../settings/defaults.js, shared with the other pages.
 
 // Format descriptions, keyed by format — values are i18n dictionary keys.
 const FORMAT_DESCRIPTIONS = {
