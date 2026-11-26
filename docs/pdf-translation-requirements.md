@@ -30,7 +30,7 @@
 ### 2.2 含まない (Phase 以外)
 
 - **レイアウト保持の日本語 PDF への再組版**（PDFMathTranslate / BabelDOC 級。Python + PyMuPDF + AGPL-3.0 が前提。本拡張のスコープ外。必要な人はそちらを使う）
-- スキャン PDF の OCR（Phase 3 以降で検討、Tesseract.js Apache-2.0 をオプショナル導入）
+- スキャン PDF の OCR（Phase 3 以降。既存のローカルサーバーに vision モデルを追加して行う。同梱エンジンは持たない。詳細は `docs/pdf-ocr-requirements.md`）
 - DRM / パスワード付き PDF
 - 組み込みビューアへのボタン注入（不可能）
 - Chrome Web Store / AMO への公開
@@ -236,7 +236,7 @@
 - **Phase 0 — スパイク**: pdf.js 同梱 → `getTextContent()` → 段落復元 → console 出力までを手元の任意の PDF 1 本で確認
 - **Phase 1 — MVP**: FR-1（URL 拡張子検知のみ）、FR-2〜FR-7、FR-10、FR-11。手動テスト可能な状態
 - **Phase 2 — 実用化**: FR-12（HEAD 検証）、FR-4 の file URL アクセス誘導、FR-14（保存 / エクスポート）、FR-9（検索）、サムネイル・目次
-- **Phase 3 — 統合**: FR-13（DNR 自動リダイレクト、opt-in）、OCR (Tesseract.js)、2カラム・脚注の読み順精度向上
+- **Phase 3 — 統合**: FR-13（DNR 自動リダイレクト、opt-in）、OCR（ローカルサーバーの vision モデル、`docs/pdf-ocr-requirements.md`）、2カラム・脚注の読み順精度向上
 - **Phase 4 (将来)**: EPUB 等の他形式、表構造の認識。**レイアウト保持の再組版は永久にスコープ外**
 
 ## 10. 未決定事項 (要確認)
