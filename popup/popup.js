@@ -127,28 +127,8 @@ function populateSourceLangOverride() {
     }
 }
 
-// Show toast notification
-function showToast(message, type = 'success', duration = 3000) {
-    const toast = elements.toast;
-    const icon = toast.querySelector('.toast-icon');
-    const msg = toast.querySelector('.toast-message');
-
-    icon.textContent = type === 'success' ? '✅' : '❌';
-    msg.textContent = message;
-
-    if (type === 'error') {
-        toast.style.borderColor = 'var(--red)';
-        toast.style.color = 'var(--red)';
-    } else {
-        toast.style.borderColor = 'var(--accent)';
-        toast.style.color = 'var(--accent)';
-    }
-
-    toast.classList.add('show');
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, duration);
-}
+// Show toast notification (shared with the options and translator pages).
+const showToast = createToast(elements.toast);
 
 // ============================================================================
 // UI language — the popup follows the language chosen on the settings page

@@ -572,27 +572,9 @@ function applyUiLanguage() {
 // Toast
 // ============================================================================
 
-function showToast(message, type = 'success') {
-    const toast = els.toast;
-    const icon = toast.querySelector('.toast-icon');
-    const msg = toast.querySelector('.toast-message');
-
-    icon.textContent = type === 'success' ? '✅' : '❌';
-    msg.textContent = message;
-
-    if (type === 'error') {
-        toast.style.borderColor = 'var(--red)';
-        toast.style.color = 'var(--red)';
-    } else {
-        toast.style.borderColor = 'var(--accent)';
-        toast.style.color = 'var(--accent)';
-    }
-
-    toast.classList.add('show');
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, 2500);
-}
+// Shared with the options and popup pages; this page keeps its shorter
+// 2.5s display time.
+const showToast = createToast(els.toast, { duration: 2500 });
 
 // ============================================================================
 // Event Listeners

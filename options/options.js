@@ -593,20 +593,8 @@ async function saveCurrentSettings() {
     currentSettings = await settingsClient.save(nextSettings);
 }
 
-// Show toast notification
-function showToast(message, type = 'success', duration = 3000) {
-    const toast = elements.toast;
-    const icon = toast.querySelector('.toast-icon');
-    const msg = toast.querySelector('.toast-message');
-
-    icon.textContent = type === 'success' ? '✅' : type === 'error' ? '❌' : '⚠️';
-    msg.textContent = message;
-
-    toast.classList.add('show');
-    setTimeout(() => {
-        toast.classList.remove('show');
-    }, duration);
-}
+// Show toast notification (shared with the popup and translator pages).
+const showToast = createToast(elements.toast);
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', init);
