@@ -12,7 +12,9 @@ const ctx = vm.createContext({ window: {}, console, URL });
 vm.runInContext(read('pdf/paragraphs.js'), ctx);
 const P = ctx.window.LctPdfParagraphs;
 const bg = readBackgroundSources();
-const popup = read('popup/popup.js');
+// The PDF button wiring lives in popup/pdf.js; the page's own script is the
+// core. Scan both for the popup-side checks below.
+const popup = read('popup/popup.js') + '\n' + read('popup/pdf.js');
 let pass = 0, fail = 0;
 const check = (n, c, x) => { if (c) { pass++; console.log('PASS', n); } else { fail++; console.log('FAIL', n, x === undefined ? '' : JSON.stringify(x)); } };
 

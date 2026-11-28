@@ -16,7 +16,9 @@ const repo = path.join(here, '..');
 const bg = readBackgroundSources();
 const entry = read('background/entry.js');
 const manifest = JSON.parse(read('manifest.json'));
-const popup = read('popup/popup.js');
+// The PDF button wiring lives in popup/pdf.js; the page's own script is the
+// core. Scan both for the popup-side checks below.
+const popup = read('popup/popup.js') + '\n' + read('popup/pdf.js');
 
 let pass = 0, fail = 0;
 function check(name, cond) {
