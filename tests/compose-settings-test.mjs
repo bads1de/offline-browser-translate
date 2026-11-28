@@ -57,7 +57,11 @@ for (const id of [
     check(`options HTML contains ${id}`, optionsHtml.includes(`id="${id}"`));
 }
 
-const options = read('options/options.js');
+// The options page is split across a core script plus feature modules; scan
+// all of them for the compose wiring these checks guard.
+const options = ['options.js', 'prompts.js', 'glossary.js', 'autotranslate.js', 'events.js']
+    .map(file => read('options/' + file))
+    .join('\n');
 check('options reads the compose enabled setting', options.includes('currentSettings.composeTranslationEnabled'));
 check('options reads the compose source language', options.includes('currentSettings.composeSourceLanguage'));
 check('options reads the compose target language', options.includes('currentSettings.composeTargetLanguage'));
