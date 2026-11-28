@@ -1,10 +1,11 @@
 /**
  * Shared dropdown widgets for the extension pages (options, popup).
  *
- * Loaded as a classic script before the page script, so createPicker() and
- * createSimpleSelect() are available as globals. Both pages keep their own
- * element refs and item accessors; everything about rendering, filtering,
- * keyboard navigation and pinning lives here once.
+ * Loaded as a classic script before the page script, so the factories below
+ * are available as globals. Both pages keep their own element refs; everything
+ * about rendering, filtering, keyboard navigation and pinning lives here once.
+ * createLanguagePicker() and createModelPicker() additionally hold the item
+ * shape/config both pages used to repeat verbatim.
  */
 
 const PIN_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>';
@@ -225,6 +226,72 @@ function createPicker(config) {
 }
 
 /**
+ * Target-language picker: items are [code, name] entries from LANGUAGES.
+ * @param {object} config
+ *  - els: { picker, trigger, label, menu, search, list } — DOM refs
+ *  - initialValue?: string             — starting value (default 'en')
+ */
+function createLanguagePicker(config) {
+    return createPicker({
+        els: config.els,
+        getItems: () => Object.entries(LANGUAGES),
+        getId: (entry) => entry[0],
+        getName: (entry) => entry[1],
+        pinnedGroupLabel: () => t('picker.pinned'),
+        restGroupLabel: () => t('picker.allLanguages'),
+        emptyText: () => t('picker.noLangMatch'),
+        labelFor: (code) => LANGUAGES[code] || code,
+        isValidId: (code) => !!LANGUAGES[code],
+        initialValue: config.initialValue ?? 'en',
+    });
+}
+
+/**
+ * Model picker: items are { id, name, provider } objects returned by the
+ * background's LIST_MODELS message. The loaded list lives on the instance
+ * (allModels), and setModels() prunes pinned ids that no longer exist.
+ * @param {object} config
+ *  - els: { picker, trigger, label, menu, search, list } — DOM refs
+ */
+function createModelPicker(config) {
+    const picker = createPicker({
+        els: config.els,
+        getItems: () => picker.allModels,
+        getId: (m) => m.id,
+        getName: (m) => m.name,
+        pinnedGroupLabel: () => t('picker.pinned'),
+        restGroupLabel: () => t('picker.allModels'),
+        emptyText: () => picker.allModels.length === 0 ? t('picker.noModels') : t('picker.noModelMatch'),
+        labelFor: (id) => {
+            const m = picker.allModels.find(x => x.id === id);
+            return m ? m.name : (id || t('model.select'));
+        },
+        decorateOption: (li, m) => {
+            const badge = document.createElement('span');
+            badge.className = `model-provider-badge model-provider-badge--${m.provider}`;
+            badge.textContent = m.provider;
+            li.appendChild(badge);
+        },
+    });
+
+    picker.allModels = [];
+
+    picker.setModels = function (models) {
+        this.allModels = models;
+        // Drop pinned ids that no longer exist in the model list
+        const ids = new Set(models.map(m => m.id));
+        this.pinned = this.pinned.filter(id => ids.has(id));
+    };
+
+    picker.getSelectedProvider = function () {
+        const m = this.allModels.find(x => x.id === this.value);
+        return m ? m.provider : null;
+    };
+
+    return picker;
+}
+
+/**
  * Lightweight dropdown for plain value/label selects (no search box, no
  * pinning) — a styled stand-in for <select> so every dropdown on a page looks
  * and behaves the same way. Options are computed live via getOptions() each
@@ -362,5 +429,7 @@ function createSimpleSelect(config) {
 if (typeof window !== 'undefined') {
     window.PIN_ICON_SVG = PIN_ICON_SVG;
     window.createPicker = createPicker;
+    window.createLanguagePicker = createLanguagePicker;
+    window.createModelPicker = createModelPicker;
     window.createSimpleSelect = createSimpleSelect;
 }

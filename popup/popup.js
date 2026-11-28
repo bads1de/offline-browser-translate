@@ -190,10 +190,9 @@ async function init() {
     await refreshPdfButtons();
 }
 
-// createPicker() lives in ../picker.js, shared with the options page.
-
-// Target-language picker: items are [code, name] entries from LANGUAGES.
-const langPicker = createPicker({
+// Language and model pickers are built by ../picker.js, shared with the
+// options page.
+const langPicker = createLanguagePicker({
     els: {
         picker: elements.languagePicker,
         trigger: elements.langTrigger,
@@ -202,21 +201,9 @@ const langPicker = createPicker({
         search: elements.langSearch,
         list: elements.langList,
     },
-    getItems: () => Object.entries(LANGUAGES),
-    getId: (entry) => entry[0],
-    getName: (entry) => entry[1],
-    pinnedGroupLabel: () => t('picker.pinned'),
-    restGroupLabel: () => t('picker.allLanguages'),
-    emptyText: () => t('picker.noLangMatch'),
-    labelFor: (code) => LANGUAGES[code] || code,
-    isValidId: (code) => !!LANGUAGES[code],
-    initialValue: 'en',
 });
 
-// Model picker: items are { id, name, provider } objects loaded from providers.
-// allModels lives on the instance and feeds getItems(); model-specific helpers
-// (setModels / getSelectedProvider) are attached after creation.
-const modelPicker = createPicker({
+const modelPicker = createModelPicker({
     els: {
         picker: elements.modelPickerEl,
         trigger: elements.modelTrigger,
@@ -225,37 +212,7 @@ const modelPicker = createPicker({
         search: elements.modelSearch,
         list: elements.modelList,
     },
-    getItems: () => modelPicker.allModels,
-    getId: (m) => m.id,
-    getName: (m) => m.name,
-    pinnedGroupLabel: () => t('picker.pinned'),
-    restGroupLabel: () => t('picker.allModels'),
-    emptyText: () => modelPicker.allModels.length === 0 ? t('picker.noModels') : t('picker.noModelMatch'),
-    labelFor: (id) => {
-        const m = modelPicker.allModels.find(x => x.id === id);
-        return m ? m.name : (id || t('model.select'));
-    },
-    decorateOption: (li, m) => {
-        const badge = document.createElement('span');
-        badge.className = `model-provider-badge model-provider-badge--${m.provider}`;
-        badge.textContent = m.provider;
-        li.appendChild(badge);
-    },
 });
-
-modelPicker.allModels = [];
-
-modelPicker.getSelectedProvider = function () {
-    const m = this.allModels.find(x => x.id === this.value);
-    return m ? m.provider : null;
-};
-
-modelPicker.setModels = function (models) {
-    this.allModels = models;
-    // Drop pinned ids that no longer exist in the model list
-    const ids = new Set(models.map(m => m.id));
-    this.pinned = this.pinned.filter(id => ids.has(id));
-};
 
 // Initialize the model picker and wire it to settings persistence.
 function initModelPicker() {

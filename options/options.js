@@ -168,8 +168,8 @@ const elements = {
 
 let currentSettings = { ...DEFAULT_SETTINGS };
 
-// createPicker() and createSimpleSelect() live in ../picker.js, shared with
-// the popup page.
+// The picker factories and createSimpleSelect() live in ../picker.js, shared
+// with the popup page.
 
 // Full language list as { value, label } options, sorted by display name —
 // shared by every simple-select that offers a language choice.
@@ -179,8 +179,7 @@ function sortedLanguageOptions() {
         .map(([code, name]) => ({ value: code, label: name }));
 }
 
-// Target-language picker: items are [code, name] entries from LANGUAGES.
-const langPicker = createPicker({
+const langPicker = createLanguagePicker({
     els: {
         picker: elements.targetLangPickerEl,
         trigger: elements.targetLangTrigger,
@@ -189,19 +188,9 @@ const langPicker = createPicker({
         search: elements.targetLangSearch,
         list: elements.targetLangList,
     },
-    getItems: () => Object.entries(LANGUAGES),
-    getId: (entry) => entry[0],
-    getName: (entry) => entry[1],
-    pinnedGroupLabel: () => t('picker.pinned'),
-    restGroupLabel: () => t('picker.allLanguages'),
-    emptyText: () => t('picker.noLangMatch'),
-    labelFor: (code) => LANGUAGES[code] || code,
-    isValidId: (code) => !!LANGUAGES[code],
-    initialValue: 'en',
 });
 
-// Model picker: items are { id, name, provider } objects loaded from providers.
-const modelPicker = createPicker({
+const modelPicker = createModelPicker({
     els: {
         picker: elements.modelPickerEl,
         trigger: elements.modelTrigger,
@@ -210,30 +199,7 @@ const modelPicker = createPicker({
         search: elements.modelSearch,
         list: elements.modelList,
     },
-    getItems: () => modelPicker.allModels,
-    getId: (m) => m.id,
-    getName: (m) => m.name,
-    pinnedGroupLabel: () => t('picker.pinned'),
-    restGroupLabel: () => t('picker.allModels'),
-    emptyText: () => modelPicker.allModels.length === 0 ? t('picker.noModels') : t('picker.noModelMatch'),
-    labelFor: (id) => {
-        const m = modelPicker.allModels.find(x => x.id === id);
-        return m ? m.name : (id || t('model.select'));
-    },
-    decorateOption: (li, m) => {
-        const badge = document.createElement('span');
-        badge.className = `model-provider-badge model-provider-badge--${m.provider}`;
-        badge.textContent = m.provider;
-        li.appendChild(badge);
-    },
 });
-
-modelPicker.allModels = [];
-modelPicker.setModels = function (models) {
-    this.allModels = models;
-    const ids = new Set(models.map(m => m.id));
-    this.pinned = this.pinned.filter(id => ids.has(id));
-};
 
 function initTargetLangPicker() {
     langPicker.onChange = (code) => {
